@@ -433,13 +433,82 @@
     margin-top:26px;
   }
 
+  /* ---------- quick-select chips ---------- */
+  .quick-select{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    margin-bottom:14px;
+  }
+  .quick-select-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .quick-select-label{
+    font-size:11px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.7px;
+    color:var(--text-muted);
+    white-space:nowrap;
+    min-width:44px;
+  }
+  .chip{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    padding:6px 13px;
+    border-radius:20px;
+    border:none;
+    font-family:inherit;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    color:var(--accent-dark);
+    background:var(--accent-soft);
+    transition:background .12s, color .12s, box-shadow .12s;
+    white-space:nowrap;
+  }
+  .chip:hover{ background:var(--accent); color:#fff; }
+  .chip.active{ background:var(--accent); color:#fff; }
+  .chip:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .quick-select-empty{
+    font-size:12px;
+    color:var(--text-muted);
+    font-style:italic;
+  }
+
+  /* ---------- mobile ---------- */
   @media (max-width: 640px){
-    .topbar{ flex-direction:column; align-items:flex-start; }
-    .clock-card{ width:100%; }
-    .context-card{ flex-direction:column; align-items:stretch; }
+    body{ padding:16px 12px 60px; }
+    .topbar{ flex-direction:column; align-items:flex-start; gap:12px; }
+    .clock-card{ width:100%; padding:10px 16px; }
+    .clock-time{ font-size:20px; }
+    .brand h1{ font-size:20px; }
+
+    .context-card{ flex-direction:column; align-items:stretch; gap:12px; padding:14px 16px; }
     .context-field input{ width:100%; }
-    .add-student{ width:100%; }
+    .context-field input[type="date"]{ width:100%; }
+    #loadContextBtn{ width:100%; }
+
+    .controls{ flex-direction:column; align-items:stretch; gap:10px; }
+    .add-student{ width:100%; flex-direction:column; align-items:stretch; gap:8px; padding:12px; }
+    .add-student input[type="text"]{ width:100%; background:var(--bg); }
     input[type="text"]{ width:100%; }
+    #addStudentBtn{ width:100%; }
+    #addLectureBtn{ width:100%; }
+    #downloadPdfBtn{ width:100%; }
+
+    .mark-btn{ width:100px; padding:8px 4px; font-size:12px; }
+    .mark-btn .time{ font-size:10px; }
+    .col-name{ min-width:150px; }
+    .student-name{ font-size:13px; }
+    .avatar{ width:30px; height:30px; font-size:11px; }
+
+    .quick-select-row{ gap:6px; }
+    .chip{ font-size:12px; padding:5px 10px; }
   }
 
   @media (prefers-reduced-motion: reduce){
@@ -468,16 +537,25 @@
     project's values. The screen below is showing sample data so you can preview the design in the meantime.
   </div>
 
+  <div class="quick-select" id="quickSelect" style="display:none;">
+    <div class="quick-select-row">
+      <span class="quick-select-label">Class</span>
+      <div id="classChips" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+    <div class="quick-select-row">
+      <span class="quick-select-label">Batch</span>
+      <div id="batchChips" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+  </div>
+
   <div class="context-card raised">
     <div class="context-field">
       <label for="classInput">Class</label>
-      <input type="text" id="classInput" list="classOptions" placeholder="e.g. Full Stack Development" />
-      <datalist id="classOptions"></datalist>
+      <input type="text" id="classInput" placeholder="e.g. Full Stack Development" autocomplete="off" />
     </div>
     <div class="context-field">
       <label for="batchInput">Batch</label>
-      <input type="text" id="batchInput" list="batchOptions" placeholder="e.g. Batch 2026-A" />
-      <datalist id="batchOptions"></datalist>
+      <input type="text" id="batchInput" placeholder="e.g. Batch 2026-A" autocomplete="off" />
     </div>
     <div class="context-field">
       <label for="dateInput">Date</label>
@@ -599,13 +677,39 @@
     if (!sb) return;
     const { data, error } = await sb.from('students').select('class_name,batch_name');
     if (error) return;
-    const classes = [...new Set((data||[]).map(r => r.class_name).filter(Boolean))];
-    const batches = [...new Set((data||[]).map(r => r.batch_name).filter(Boolean))];
-    setDatalist('classOptions', classes);
-    setDatalist('batchOptions', batches);
+    const classes = [...new Set((data||[]).map(r => r.class_name).filter(Boolean))].sort();
+    const batches = [...new Set((data||[]).map(r => r.batch_name).filter(Boolean))].sort();
+    renderChips('classChips', classes, 'class');
+    renderChips('batchChips', batches, 'batch');
+    const quickSelect = document.getElementById('quickSelect');
+    if (classes.length || batches.length) quickSelect.style.display = '';
+    else quickSelect.style.display = 'none';
   }
-  function setDatalist(id, values){
-    document.getElementById(id).innerHTML = values.map(v => '<option value="' + escapeHtml(v) + '"></option>').join('');
+
+  function renderChips(containerId, values, type){
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    if (!values.length){
+      const em = document.createElement('span');
+      em.className = 'quick-select-empty';
+      em.textContent = 'None yet';
+      container.appendChild(em);
+      return;
+    }
+    const inputId = type === 'class' ? 'classInput' : 'batchInput';
+    const currentVal = type === 'class' ? currentClass : currentBatch;
+    values.forEach(v => {
+      const btn = document.createElement('button');
+      btn.className = 'chip' + (v === currentVal ? ' active' : '');
+      btn.textContent = v;
+      btn.type = 'button';
+      btn.addEventListener('click', () => {
+        document.getElementById(inputId).value = v;
+        container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+      });
+      container.appendChild(btn);
+    });
   }
 
   async function loadStudents(){
@@ -868,7 +972,7 @@
       await loadStudents();
       await loadAttendance();
       renderAll();
-      refreshClassBatchOptions();
+      await refreshClassBatchOptions();
       setStatus('Loaded ' + currentClass + ' · ' + currentBatch + '.', false);
     } finally {
       loadBtn.disabled = false;
