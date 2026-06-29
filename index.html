@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ADCI — Classroom Attendance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-brand">
+      <div class="brand-logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name"><span class="brand-pill">ADCI</span> Classroom Attendance</div>
+        <div class="brand-sub">Lecture-wise daily register</div>
+      </div>
+    </div>
+    <div class="clock-card">
+      <div class="clock-date" id="clockDate">—</div>
+      <div class="clock-time" id="clockTime">--:--:--</div>
+    </div>
+  </header>
+
+  <!-- Connection banner -->
+  <div class="alert alert-warn" id="connBanner" style="display:none">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    Supabase is not connected — add your keys to <code>.env</code> (copy <code>.env.example</code>). Showing demo data for preview.
+  </div>
+
+  <!-- Context card -->
+  <section class="card context-card">
+    <div class="context-fields">
+      <div class="field-group">
+        <label for="classInput">Class</label>
+        <input type="text" id="classInput" list="classOptions" placeholder="e.g. Full Stack Development" autocomplete="off" />
+        <datalist id="classOptions"></datalist>
+      </div>
+      <div class="field-group">
+        <label for="batchInput">Batch</label>
+        <input type="text" id="batchInput" list="batchOptions" placeholder="e.g. Batch 2026-A" autocomplete="off" />
+        <datalist id="batchOptions"></datalist>
+      </div>
+      <div class="field-group">
+        <label for="dateInput">Date</label>
+        <input type="date" id="dateInput" />
+      </div>
+      <button class="btn btn-primary" id="loadContextBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.49"/></svg>
+        Load register
+      </button>
+    </div>
+  </section>
+
+  <!-- Context summary -->
+  <div class="context-summary" id="contextSummary"></div>
+
+  <!-- Toolbar -->
+  <div class="toolbar" id="toolbar" style="display:none">
+    <div class="add-student-form card">
+      <input type="text" id="newStudentName" placeholder="Student name" />
+      <input type="text" id="newStudentRoll" placeholder="Roll no (optional)" />
+      <button class="btn btn-ghost" id="addStudentBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add student
+      </button>
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn btn-primary" id="addLectureBtn" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add lecture
+      </button>
+      <button class="btn btn-ghost" id="downloadPdfBtn" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export PDF
+      </button>
+    </div>
+    <span class="status-msg" id="statusMsg"></span>
+  </div>
+
+  <!-- Table card -->
+  <section class="card table-card" id="tableCard" style="display:none">
+    <div class="table-scroll">
+      <table id="attendanceTable">
+        <thead>
+          <tr id="headerRow">
+            <th class="col-num">#</th>
+            <th class="col-student">Student</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div class="empty-state" id="emptyState" style="display:none">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+      <p id="emptyText">No students yet — add the first one above.</p>
+    </div>
+  </section>
+
+  <div class="landing-hint" id="landingHint">
+    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    <p>Enter a class and batch above, then click <strong>Load register</strong> to begin.</p>
+  </div>
+
+  <footer>
+    Click a lecture button to cycle: <strong>Mark Present → Present → Absent → reset</strong>. Time is stamped automatically. Past dates are read-only.
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
