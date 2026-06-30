@@ -88,8 +88,38 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add student
       </button>
+      <button class="btn btn-ghost" id="importToggleBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+        Import CSV
+      </button>
     </div>
     <span class="status-msg" id="statusMsg"></span>
+  </div>
+
+  <!-- Bulk import panel -->
+  <div class="import-panel card" id="importPanel" style="display:none">
+    <div class="import-header">
+      <div>
+        <div class="import-title">Bulk import students</div>
+        <div class="import-hint">Paste CSV below or upload a file — one student per row, columns: <code>Name, Roll No</code> (roll no optional). Header row is auto-detected.</div>
+      </div>
+      <button class="icon-btn" id="importCloseBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="import-body">
+      <textarea id="importTextarea" placeholder="Aarav Mehta, ADCI-01&#10;Priya Nair, ADCI-02&#10;Rohan Iyer"></textarea>
+      <div class="import-upload-row">
+        <label class="btn btn-ghost btn-sm upload-label" for="importFileInput">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Upload .csv
+        </label>
+        <input type="file" id="importFileInput" accept=".csv,.txt" style="display:none" />
+        <button class="btn btn-ghost btn-sm" id="importParseBtn">Preview</button>
+        <button class="btn btn-primary btn-sm" id="importConfirmBtn" style="display:none">
+          Import <span id="importCount"></span> students
+        </button>
+      </div>
+    </div>
+    <div id="importPreview" class="import-preview" style="display:none"></div>
   </div>
 
   <!-- Table card -->

@@ -427,6 +427,126 @@
   document.getElementById('classInput').addEventListener('keydown', e => e.key === 'Enter' && onLoadContext());
   document.getElementById('batchInput').addEventListener('keydown', e => e.key === 'Enter' && onLoadContext());
 
+  // ── Bulk import ──────────────────────────────────────────────────────────
+  let importRows = []; // parsed & deduplicated rows ready to insert
+
+  document.getElementById('importToggleBtn').addEventListener('click', () => {
+    const panel = document.getElementById('importPanel');
+    const open  = panel.style.display === 'none';
+    panel.style.display = open ? 'block' : 'none';
+    if (open) document.getElementById('importTextarea').focus();
+  });
+
+  document.getElementById('importCloseBtn').addEventListener('click', () => {
+    document.getElementById('importPanel').style.display = 'none';
+    resetImportUI();
+  });
+
+  document.getElementById('importFileInput').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      document.getElementById('importTextarea').value = ev.target.result;
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  });
+
+  document.getElementById('importParseBtn').addEventListener('click', onImportParse);
+  document.getElementById('importConfirmBtn').addEventListener('click', onImportConfirm);
+
+  function parseImportText(raw) {
+    return raw.split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => {
+        const parts = line.split(',').map(p => p.trim());
+        const name  = parts[0] || '';
+        const roll  = parts[1] || '';
+        return { name, roll };
+      })
+      .filter(r => r.name && !/^name$/i.test(r.name)); // skip header rows
+  }
+
+  function onImportParse() {
+    const raw = document.getElementById('importTextarea').value;
+    const parsed = parseImportText(raw);
+
+    if (!parsed.length) {
+      setStatus('Nothing to import — paste at least one name.', true);
+      return;
+    }
+
+    const existingNames = new Set(students.map(s => s.name.toLowerCase()));
+    importRows = [];
+
+    const preview = document.getElementById('importPreview');
+    preview.innerHTML = '';
+    preview.style.display = 'flex';
+
+    parsed.forEach(r => {
+      const isDupe = existingNames.has(r.name.toLowerCase());
+      if (!isDupe) importRows.push(r);
+
+      const row = document.createElement('div');
+      row.className = 'import-preview-row' + (isDupe ? ' row-dupe' : '');
+      row.innerHTML = `
+        <div class="avatar">${initials(r.name)}</div>
+        <div>
+          <div class="student-name">${escapeHtml(r.name)}</div>
+          ${r.roll ? `<div class="student-roll">${escapeHtml(r.roll)}</div>` : ''}
+        </div>
+        ${isDupe ? '<span class="import-dupe-tag">already exists</span>' : ''}`;
+      preview.appendChild(row);
+    });
+
+    const confirmBtn = document.getElementById('importConfirmBtn');
+    document.getElementById('importCount').textContent = importRows.length;
+    confirmBtn.style.display = importRows.length ? 'inline-flex' : 'none';
+    if (!importRows.length) setStatus('All parsed students already exist.', true);
+  }
+
+  async function onImportConfirm() {
+    if (!importRows.length) return;
+    const btn = document.getElementById('importConfirmBtn');
+    btn.disabled = true;
+    try {
+      if (sb) {
+        const records = importRows.map(r => ({
+          name: r.name, roll_no: r.roll || null,
+          class_name: currentClass, batch_name: currentBatch,
+        }));
+        const { data, error } = await sb.from('students1').insert(records).select();
+        if (error) throw error;
+        students.push(...(data || []));
+      } else {
+        importRows.forEach(r => {
+          students.push({ id: `demo-${Date.now()}-${Math.random()}`, name: r.name, roll_no: r.roll || null });
+        });
+      }
+      students.sort((a, b) => a.name.localeCompare(b.name));
+      setStatus(`${importRows.length} student${importRows.length > 1 ? 's' : ''} imported.`, false);
+      importRows = [];
+      document.getElementById('importPanel').style.display = 'none';
+      resetImportUI();
+      renderAll();
+      refreshOptions();
+    } catch (err) {
+      setStatus('Import failed: ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function resetImportUI() {
+    document.getElementById('importTextarea').value = '';
+    document.getElementById('importPreview').style.display = 'none';
+    document.getElementById('importPreview').innerHTML = '';
+    document.getElementById('importConfirmBtn').style.display = 'none';
+    importRows = [];
+  }
+
   (async function init() {
     const dateEl = document.getElementById('dateInput');
     dateEl.value = todayStr();

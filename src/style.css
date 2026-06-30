@@ -551,6 +551,134 @@ tbody td {
 .landing-hint svg { opacity: .3; }
 .landing-hint p { font-size: 14px; color: var(--text-muted); max-width: 320px; }
 
+/* ── Bulk import panel ────────────────────────────────────── */
+.import-panel {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.import-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.import-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.import-hint {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.import-hint code {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  line-height: 1;
+  flex-shrink: 0;
+}
+.icon-btn:hover { background: var(--surface-2); color: var(--text); }
+
+.import-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#importTextarea {
+  width: 100%;
+  min-height: 120px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  resize: vertical;
+  outline: none;
+  line-height: 1.6;
+}
+#importTextarea:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(99,102,241,.12);
+}
+#importTextarea::placeholder { color: var(--text-subtle); }
+
+.import-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.upload-label { cursor: pointer; }
+
+.import-preview {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.import-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font-size: 13px;
+}
+
+.import-preview-row .avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.import-preview-row .student-name { font-size: 13px; }
+.import-preview-row .student-roll { font-size: 11.5px; }
+
+.import-preview-row.row-dupe {
+  background: var(--absent-bg);
+  border: 1px solid var(--absent-border);
+}
+
+.import-dupe-tag {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--absent);
+  white-space: nowrap;
+}
+
 /* ── Footer ───────────────────────────────────────────────── */
 footer {
   text-align: center;
