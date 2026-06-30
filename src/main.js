@@ -1,11 +1,9 @@
 (function () {
-  // ── Config from environment variables (injected by Vite at build time) ──
+  // ── Config ─────────────────────────────────────────────────────────────
   const SUPABASE_URL = typeof import.meta !== 'undefined' && import.meta.env
-    ? import.meta.env.VITE_SUPABASE_URL
-    : '';
+    ? import.meta.env.VITE_SUPABASE_URL : '';
   const SUPABASE_ANON_KEY = typeof import.meta !== 'undefined' && import.meta.env
-    ? import.meta.env.VITE_SUPABASE_ANON_KEY
-    : '';
+    ? import.meta.env.VITE_SUPABASE_ANON_KEY : '';
 
   const isConfigured =
     SUPABASE_URL && !SUPABASE_URL.includes('your-project') &&
@@ -18,22 +16,25 @@
     document.getElementById('connBanner').style.display = 'flex';
   }
 
-  const DEMO_CLASS = 'Full Stack Development';
-  const DEMO_BATCH = 'Batch 2026-A';
+  const DEMO_CLASS   = 'Full Stack Development';
+  const DEMO_BATCH   = 'Batch 2026-A';
   const DEMO_STUDENTS = [
     { id: 'demo-1', name: 'Aarav Mehta',  roll_no: 'ADCI-01' },
     { id: 'demo-2', name: 'Priya Nair',   roll_no: 'ADCI-02' },
     { id: 'demo-3', name: 'Rohan Iyer',   roll_no: 'ADCI-03' },
   ];
 
+  const LS_CLASS = 'adci_class';
+  const LS_BATCH = 'adci_batch';
+
   // ── State ──────────────────────────────────────────────────────────────
-  let students = [];
+  let students       = [];
   let attendanceState = {};
-  let lectureCount = 1;
-  let currentClass = '';
-  let currentBatch = '';
-  let viewDate = '';
-  let contextLoaded = false;
+  let lectureCount   = 1;
+  let currentClass   = '';
+  let currentBatch   = '';
+  let viewDate       = '';
+  let contextLoaded  = false;
 
   // ── Helpers ────────────────────────────────────────────────────────────
   const pad = n => String(n).padStart(2, '0');
@@ -133,6 +134,7 @@
   function renderHeader() {
     const row = document.getElementById('headerRow');
     row.querySelectorAll('.lec-th').forEach(el => el.remove());
+
     for (let i = 1; i <= lectureCount; i++) {
       const present = students.filter(s => attendanceState[`${s.id}__${i}`]?.status === 'Present').length;
       const th = document.createElement('th');
@@ -140,11 +142,21 @@
       th.innerHTML = `Lecture ${i}<span class="lec-count">${present}/${students.length} present</span>`;
       row.appendChild(th);
     }
+
+    // "+" add-lecture cell — only on today
+    if (isToday()) {
+      const thAdd = document.createElement('th');
+      thAdd.className = 'lec-th add-lec-th';
+      thAdd.title = 'Add lecture';
+      thAdd.innerHTML = `<button class="add-lec-btn" aria-label="Add lecture">＋</button>`;
+      thAdd.querySelector('.add-lec-btn').addEventListener('click', onAddLecture);
+      row.appendChild(thAdd);
+    }
   }
 
   function renderRows() {
-    const tbody = document.getElementById('tableBody');
-    const empty = document.getElementById('emptyState');
+    const tbody  = document.getElementById('tableBody');
+    const empty  = document.getElementById('emptyState');
     tbody.innerHTML = '';
 
     if (!students.length) {
@@ -175,17 +187,20 @@
       tr.appendChild(tdName);
 
       for (let lec = 1; lec <= lectureCount; lec++) {
-        const td = document.createElement('td');
+        const td  = document.createElement('td');
         const btn = document.createElement('button');
         btn.className = 'mark-btn';
         btn.dataset.studentId = s.id;
-        btn.dataset.lecture = lec;
+        btn.dataset.lecture   = lec;
         btn.disabled = readOnly;
         applyBtnState(btn, attendanceState[`${s.id}__${lec}`]);
         btn.addEventListener('click', onMarkClick);
         td.appendChild(btn);
         tr.appendChild(td);
       }
+
+      // empty cell under the "+" header
+      if (isToday()) tr.appendChild(document.createElement('td'));
 
       tbody.appendChild(tr);
     });
@@ -206,9 +221,11 @@
 
   function updateSummary() {
     const el = document.getElementById('contextSummary');
-    el.innerHTML = `Showing <strong>${escapeHtml(currentClass)}</strong> · <strong>${escapeHtml(currentBatch)}</strong> · ${formatDateLong(viewDate)}` +
-      (isToday() ? '' : ' <span class="badge-readonly">Read-only — past date</span>');
-    document.getElementById('addLectureBtn').disabled = !isToday();
+    const dateLabel = isToday() ? 'Today' : formatDateLong(viewDate);
+    el.innerHTML =
+      `<strong>${escapeHtml(currentClass)}</strong> · <strong>${escapeHtml(currentBatch)}</strong>` +
+      ` · ${dateLabel}` +
+      (isToday() ? '' : ' <span class="badge-readonly">Read-only</span>');
     document.getElementById('downloadPdfBtn').disabled = false;
   }
 
@@ -220,11 +237,11 @@
 
   // ── Attendance toggle ──────────────────────────────────────────────────
   async function onMarkClick(e) {
-    const btn = e.currentTarget;
+    const btn       = e.currentTarget;
     const studentId = btn.dataset.studentId;
-    const lecture = parseInt(btn.dataset.lecture, 10);
-    const key = `${studentId}__${lecture}`;
-    const current = attendanceState[key];
+    const lecture   = parseInt(btn.dataset.lecture, 10);
+    const key       = `${studentId}__${lecture}`;
+    const current   = attendanceState[key];
     const nextStatus = !current ? 'Present' : current.status === 'Present' ? 'Absent' : null;
 
     btn.disabled = true;
@@ -233,7 +250,7 @@
         await removeAttendance(studentId, lecture);
         delete attendanceState[key];
       } else {
-        const time = nowTimeStr();
+        const time  = nowTimeStr();
         const rowId = await upsertAttendance(studentId, lecture, nextStatus, time, current?.rowId);
         attendanceState[key] = { status: nextStatus, time, rowId };
       }
@@ -250,8 +267,8 @@
     if (!sb) return existingRowId || `demo-${Math.random()}`;
     const { data, error } = await sb.from('attendance1')
       .upsert({
-        student_id: studentId,
-        lecture_number: lecture,
+        student_id:      studentId,
+        lecture_number:  lecture,
         attendance_date: viewDate,
         attendance_time: time,
         status,
@@ -265,8 +282,8 @@
     if (!sb) return;
     const { error } = await sb.from('attendance1')
       .delete()
-      .eq('student_id', studentId)
-      .eq('lecture_number', lecture)
+      .eq('student_id',      studentId)
+      .eq('lecture_number',  lecture)
       .eq('attendance_date', viewDate);
     if (error) throw error;
   }
@@ -276,8 +293,8 @@
     if (!contextLoaded) { setStatus('Load a class and batch first.', true); return; }
     const nameEl = document.getElementById('newStudentName');
     const rollEl = document.getElementById('newStudentRoll');
-    const name = nameEl.value.trim();
-    const roll = rollEl.value.trim();
+    const name   = nameEl.value.trim();
+    const roll   = rollEl.value.trim();
     if (!name) { setStatus('Enter a student name first.', true); return; }
 
     const btn = document.getElementById('addStudentBtn');
@@ -295,7 +312,7 @@
       students.sort((a, b) => a.name.localeCompare(b.name));
       nameEl.value = '';
       rollEl.value = '';
-      setStatus(`${name} added to ${currentClass} · ${currentBatch}.`, false);
+      setStatus(`${name} added.`, false);
       renderAll();
       refreshOptions();
     } catch (err) {
@@ -312,7 +329,7 @@
     setStatus(`Lecture ${lectureCount} added.`, false);
   }
 
-  // ── Load context ───────────────────────────────────────────────────────
+  // ── Load / switch register ─────────────────────────────────────────────
   async function onLoadContext() {
     const c = document.getElementById('classInput').value.trim();
     const b = document.getElementById('batchInput').value.trim();
@@ -321,6 +338,9 @@
 
     currentClass = c; currentBatch = b; viewDate = d; contextLoaded = true;
 
+    // persist for next session
+    try { localStorage.setItem(LS_CLASS, c); localStorage.setItem(LS_BATCH, b); } catch (_) {}
+
     const loadBtn = document.getElementById('loadContextBtn');
     loadBtn.disabled = true;
     setStatus('Loading…', false);
@@ -328,6 +348,10 @@
     try {
       await loadStudents();
       await loadAttendance();
+
+      // hide context card, show register bar + content
+      document.getElementById('contextCard').style.display = 'none';
+      document.getElementById('registerBar').style.display = 'flex';
       document.getElementById('toolbar').style.display = 'flex';
       document.getElementById('tableCard').style.display = 'block';
       document.getElementById('landingHint').style.display = 'none';
@@ -337,6 +361,13 @@
     } finally {
       loadBtn.disabled = false;
     }
+  }
+
+  function onSwitchRegister() {
+    // show the context card again, pre-filled with current values
+    document.getElementById('registerBar').style.display = 'none';
+    document.getElementById('contextCard').style.display = 'block';
+    // keep inputs filled so teacher can see / edit current values
   }
 
   function setStatus(msg, isError) {
@@ -349,7 +380,7 @@
   // ── PDF export ─────────────────────────────────────────────────────────
   function downloadPdf() {
     if (!contextLoaded) { setStatus('Load a class and batch first.', true); return; }
-    if (!window.jspdf) { setStatus('PDF library not loaded — check internet connection.', true); return; }
+    if (!window.jspdf)  { setStatus('PDF library not loaded — check internet connection.', true); return; }
     if (!students.length) { setStatus('No students to export.', true); return; }
 
     const { jsPDF } = window.jspdf;
@@ -387,8 +418,8 @@
 
   // ── Init ───────────────────────────────────────────────────────────────
   document.getElementById('addStudentBtn').addEventListener('click', onAddStudent);
-  document.getElementById('addLectureBtn').addEventListener('click', onAddLecture);
   document.getElementById('loadContextBtn').addEventListener('click', onLoadContext);
+  document.getElementById('switchRegisterBtn').addEventListener('click', onSwitchRegister);
   document.getElementById('downloadPdfBtn').addEventListener('click', downloadPdf);
   document.getElementById('newStudentName').addEventListener('keydown', e => e.key === 'Enter' && onAddStudent());
   document.getElementById('newStudentRoll').addEventListener('keydown', e => e.key === 'Enter' && onAddStudent());
@@ -398,17 +429,24 @@
   (async function init() {
     const dateEl = document.getElementById('dateInput');
     dateEl.value = todayStr();
-    dateEl.max = todayStr();
-
-    if (!sb) {
-      document.getElementById('classInput').value = DEMO_CLASS;
-      document.getElementById('batchInput').value = DEMO_BATCH;
-    }
+    dateEl.max   = todayStr();
 
     await refreshOptions();
 
-    const c = document.getElementById('classInput').value.trim();
-    const b = document.getElementById('batchInput').value.trim();
-    if (c && b) await onLoadContext();
+    // Try to auto-load from last session
+    let savedClass = '', savedBatch = '';
+    try {
+      savedClass = localStorage.getItem(LS_CLASS) || '';
+      savedBatch = localStorage.getItem(LS_BATCH) || '';
+    } catch (_) {}
+
+    // Fall back to demo values when Supabase isn't configured
+    if (!sb) { savedClass = DEMO_CLASS; savedBatch = DEMO_BATCH; }
+
+    if (savedClass && savedBatch) {
+      document.getElementById('classInput').value = savedClass;
+      document.getElementById('batchInput').value = savedBatch;
+      await onLoadContext();
+    }
   })();
 })();

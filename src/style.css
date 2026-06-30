@@ -266,15 +266,33 @@ button { font-family: inherit; cursor: pointer; }
   border-color: #c9d2e0;
 }
 
-/* ── Context summary ──────────────────────────────────────── */
-.context-summary {
-  font-size: 13px;
-  color: var(--text-muted);
-  padding: 0 4px;
-  min-height: 20px;
+/* ── Register bar (replaces context card after load) ──────── */
+.register-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 18px;
+  box-shadow: var(--shadow-sm);
+  flex-wrap: wrap;
 }
 
-.context-summary strong { color: var(--text); }
+.register-bar-info {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.register-bar-info strong { color: var(--text); }
+
+.register-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
 
 .badge-readonly {
   display: inline-flex;
@@ -288,6 +306,11 @@ button { font-family: inherit; cursor: pointer; }
   padding: 1px 8px;
   border-radius: 20px;
   margin-left: 8px;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12.5px;
 }
 
 /* ── Toolbar ──────────────────────────────────────────────── */
@@ -325,11 +348,6 @@ button { font-family: inherit; cursor: pointer; }
 #newStudentName { width: 170px; }
 #newStudentRoll { width: 150px; }
 
-.toolbar-actions {
-  display: flex;
-  gap: 8px;
-}
-
 .status-msg {
   font-size: 13px;
   color: var(--text-muted);
@@ -337,6 +355,35 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 .status-msg.error { color: var(--absent); }
+
+/* ── Add-lecture column header ────────────────────────────── */
+.add-lec-th {
+  width: 52px;
+  text-align: center;
+  padding: 8px !important;
+}
+
+.add-lec-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .13s, border-color .13s, color .13s;
+}
+
+.add-lec-btn:hover {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
 
 /* ── Table ────────────────────────────────────────────────── */
 .table-card { overflow: hidden; }
@@ -521,7 +568,7 @@ footer {
   .toolbar { flex-direction: column; align-items: stretch; }
   .add-student-form { flex-direction: column; }
   #newStudentName, #newStudentRoll { width: 100%; }
-  .toolbar-actions { flex-wrap: wrap; }
+  .register-bar { flex-direction: column; align-items: flex-start; }
   .status-msg { margin-left: 0; }
 }
 

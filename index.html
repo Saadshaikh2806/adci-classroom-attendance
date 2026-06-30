@@ -40,8 +40,8 @@
     Supabase is not connected — add your keys to <code>.env</code> (copy <code>.env.example</code>). Showing demo data for preview.
   </div>
 
-  <!-- Context card -->
-  <section class="card context-card">
+  <!-- Context card (hidden after a register is loaded) -->
+  <section class="card context-card" id="contextCard">
     <div class="context-fields">
       <div class="field-group">
         <label for="classInput">Class</label>
@@ -64,10 +64,22 @@
     </div>
   </section>
 
-  <!-- Context summary -->
-  <div class="context-summary" id="contextSummary"></div>
+  <!-- Active register bar (shown after load, replaces context card) -->
+  <div class="register-bar" id="registerBar" style="display:none">
+    <div class="register-bar-info" id="contextSummary"></div>
+    <div class="register-bar-actions">
+      <button class="btn btn-ghost btn-sm" id="downloadPdfBtn" disabled>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export PDF
+      </button>
+      <button class="btn btn-ghost btn-sm" id="switchRegisterBtn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+        Switch
+      </button>
+    </div>
+  </div>
 
-  <!-- Toolbar -->
+  <!-- Toolbar (add student + status) -->
   <div class="toolbar" id="toolbar" style="display:none">
     <div class="add-student-form card">
       <input type="text" id="newStudentName" placeholder="Student name" />
@@ -75,16 +87,6 @@
       <button class="btn btn-ghost" id="addStudentBtn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add student
-      </button>
-    </div>
-    <div class="toolbar-actions">
-      <button class="btn btn-primary" id="addLectureBtn" disabled>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add lecture
-      </button>
-      <button class="btn btn-ghost" id="downloadPdfBtn" disabled>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Export PDF
       </button>
     </div>
     <span class="status-msg" id="statusMsg"></span>
@@ -116,6 +118,7 @@
 
   <footer>
     Click a lecture button to cycle: <strong>Mark Present → Present → Absent → reset</strong>. Time is stamped automatically. Past dates are read-only.
+    Use the <strong>+</strong> column in the table header to add more lectures.
   </footer>
 </div>
 
