@@ -105,7 +105,7 @@
       .select('*')
       .eq('class_name', currentClass)
       .eq('batch_name', currentBatch)
-      .order('name', { ascending: true });
+      .order('roll_no', { ascending: true, nullsFirst: false });
     if (error) { setStatus('Could not load students: ' + error.message, true); students = []; return; }
     students = data || [];
   }
@@ -317,7 +317,12 @@
       } else {
         students.push({ id: `demo-${Date.now()}`, name, roll_no: roll || null });
       }
-      students.sort((a, b) => a.name.localeCompare(b.name));
+      students.sort((a, b) => {
+        if (!a.roll_no && !b.roll_no) return a.name.localeCompare(b.name);
+        if (!a.roll_no) return 1;
+        if (!b.roll_no) return -1;
+        return a.roll_no.localeCompare(b.roll_no, undefined, { numeric: true, sensitivity: 'base' });
+      });
       nameEl.value = '';
       rollEl.value = '';
       setStatus(`${name} added.`, false);
@@ -545,7 +550,12 @@
           students.push({ id: `demo-${Date.now()}-${Math.random()}`, name: r.name, roll_no: r.roll || null });
         });
       }
-      students.sort((a, b) => a.name.localeCompare(b.name));
+      students.sort((a, b) => {
+        if (!a.roll_no && !b.roll_no) return a.name.localeCompare(b.name);
+        if (!a.roll_no) return 1;
+        if (!b.roll_no) return -1;
+        return a.roll_no.localeCompare(b.roll_no, undefined, { numeric: true, sensitivity: 'base' });
+      });
       setStatus(`${importRows.length} student${importRows.length > 1 ? 's' : ''} imported.`, false);
       importRows = [];
       document.getElementById('importPanel').style.display = 'none';
