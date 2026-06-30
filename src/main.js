@@ -131,33 +131,34 @@
   }
 
   // ── Render ─────────────────────────────────────────────────────────────
-  function renderHeader() {
-    const row = document.getElementById('headerRow');
-    row.querySelectorAll('.lec-th').forEach(el => el.remove());
+  function renderLectureSummary() {
+    const bar = document.getElementById('lectureSummaryBar');
+    bar.innerHTML = '';
 
     for (let i = 1; i <= lectureCount; i++) {
       const present = students.filter(s => attendanceState[`${s.id}__${i}`]?.status === 'Present').length;
-      const th = document.createElement('th');
-      th.className = 'lec-th';
-      th.innerHTML = `Lecture ${i}<span class="lec-count">${present}/${students.length} present</span>`;
-      row.appendChild(th);
+      const chip = document.createElement('div');
+      chip.className = 'lec-summary-chip';
+      chip.innerHTML =
+        `<span class="lec-summary-label">L${i}</span>` +
+        `<span class="lec-summary-stat">${present}/${students.length}</span>`;
+      bar.appendChild(chip);
     }
 
-    // "+" add-lecture cell — only on today
     if (isToday()) {
-      const thAdd = document.createElement('th');
-      thAdd.className = 'lec-th add-lec-th';
-      thAdd.title = 'Add lecture';
-      thAdd.innerHTML = `<button class="add-lec-btn" aria-label="Add lecture">＋</button>`;
-      thAdd.querySelector('.add-lec-btn').addEventListener('click', onAddLecture);
-      row.appendChild(thAdd);
+      const btn = document.createElement('button');
+      btn.className = 'add-lec-chip-btn';
+      btn.innerHTML =
+        `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add lecture`;
+      btn.addEventListener('click', onAddLecture);
+      bar.appendChild(btn);
     }
   }
 
-  function renderRows() {
-    const tbody  = document.getElementById('tableBody');
-    const empty  = document.getElementById('emptyState');
-    tbody.innerHTML = '';
+  function renderStudentCards() {
+    const list  = document.getElementById('studentList');
+    const empty = document.getElementById('emptyState');
+    list.innerHTML = '';
 
     if (!students.length) {
       empty.style.display = 'flex';
@@ -169,53 +170,48 @@
 
     const readOnly = !isToday();
     students.forEach((s, idx) => {
-      const tr = document.createElement('tr');
+      const card = document.createElement('div');
+      card.className = 'student-card';
 
-      const tdNum = document.createElement('td');
-      tdNum.innerHTML = `<div class="row-num">${idx + 1}</div>`;
-      tr.appendChild(tdNum);
-
-      const tdName = document.createElement('td');
-      tdName.innerHTML = `
-        <div class="student-cell">
+      card.innerHTML = `
+        <div class="student-card-meta">
+          <div class="row-num">${idx + 1}</div>
           <div class="avatar">${initials(s.name)}</div>
-          <div>
+          <div class="student-card-name">
             <div class="student-name">${escapeHtml(s.name)}</div>
             ${s.roll_no ? `<div class="student-roll">${escapeHtml(s.roll_no)}</div>` : ''}
           </div>
-        </div>`;
-      tr.appendChild(tdName);
+        </div>
+        <div class="lec-chips" data-student-id="${s.id}"></div>`;
 
+      const chips = card.querySelector('.lec-chips');
       for (let lec = 1; lec <= lectureCount; lec++) {
-        const td  = document.createElement('td');
         const btn = document.createElement('button');
-        btn.className = 'mark-btn';
+        btn.className = 'lec-chip';
         btn.dataset.studentId = s.id;
         btn.dataset.lecture   = lec;
         btn.disabled = readOnly;
-        applyBtnState(btn, attendanceState[`${s.id}__${lec}`]);
+        applyChipState(btn, lec, attendanceState[`${s.id}__${lec}`]);
         btn.addEventListener('click', onMarkClick);
-        td.appendChild(btn);
-        tr.appendChild(td);
+        chips.appendChild(btn);
       }
 
-      // empty cell under the "+" header
-      if (isToday()) tr.appendChild(document.createElement('td'));
-
-      tbody.appendChild(tr);
+      list.appendChild(card);
     });
   }
 
-  function applyBtnState(btn, state) {
-    btn.classList.remove('state-present', 'state-absent');
+  function applyChipState(btn, lec, state) {
+    btn.classList.remove('chip-present', 'chip-absent');
     if (!state) {
-      btn.innerHTML = 'Mark Present';
+      btn.innerHTML = `<span class="chip-lec">L${lec}</span><span class="chip-mark">—</span>`;
     } else if (state.status === 'Present') {
-      btn.classList.add('state-present');
-      btn.innerHTML = `✓ Present<span class="time">${formatTime(state.time)}</span>`;
+      btn.classList.add('chip-present');
+      btn.innerHTML = `<span class="chip-lec">L${lec}</span><span class="chip-mark">✓</span>`;
+      btn.title = formatTime(state.time);
     } else {
-      btn.classList.add('state-absent');
-      btn.innerHTML = `✕ Absent<span class="time">${formatTime(state.time)}</span>`;
+      btn.classList.add('chip-absent');
+      btn.innerHTML = `<span class="chip-lec">L${lec}</span><span class="chip-mark">✕</span>`;
+      btn.title = formatTime(state.time);
     }
   }
 
@@ -230,9 +226,21 @@
   }
 
   function renderAll() {
-    renderHeader();
-    renderRows();
+    renderLectureSummary();
+    renderStudentCards();
     updateSummary();
+  }
+
+  // Re-render just the summary bar + chip for a student after a mark change
+  function refreshAfterMark(studentId) {
+    renderLectureSummary();
+    // update only the chips for this student
+    const chips = document.querySelector(`.lec-chips[data-student-id="${studentId}"]`);
+    if (!chips) return;
+    chips.querySelectorAll('.lec-chip').forEach(btn => {
+      const lec = parseInt(btn.dataset.lecture, 10);
+      applyChipState(btn, lec, attendanceState[`${studentId}__${lec}`]);
+    });
   }
 
   // ── Attendance toggle ──────────────────────────────────────────────────
@@ -254,8 +262,8 @@
         const rowId = await upsertAttendance(studentId, lecture, nextStatus, time, current?.rowId);
         attendanceState[key] = { status: nextStatus, time, rowId };
       }
-      applyBtnState(btn, attendanceState[key]);
-      renderHeader();
+      applyChipState(btn, lecture, attendanceState[key]);
+      refreshAfterMark(studentId);
     } catch (err) {
       setStatus('Could not save: ' + err.message, true);
     } finally {
