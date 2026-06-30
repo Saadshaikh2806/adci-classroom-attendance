@@ -417,9 +417,9 @@ button { font-family: inherit; cursor: pointer; }
 
 .student-card {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 16px;
-  padding: 12px 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   transition: background .1s;
   flex-wrap: wrap;
@@ -434,6 +434,7 @@ button { font-family: inherit; cursor: pointer; }
   gap: 10px;
   min-width: 180px;
   flex-shrink: 0;
+  padding-top: 2px;
 }
 
 .row-num {
