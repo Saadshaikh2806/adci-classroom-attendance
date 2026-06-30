@@ -98,16 +98,25 @@
       batches.map(v => `<option value="${escapeHtml(v)}"></option>`).join('');
   }
 
+  // ── Helpers ────────────────────────────────────────────────────────────
+  function sortStudents(arr) {
+    return arr.sort((a, b) => {
+      if (!a.roll_no && !b.roll_no) return a.name.localeCompare(b.name);
+      if (!a.roll_no) return 1;
+      if (!b.roll_no) return -1;
+      return a.roll_no.localeCompare(b.roll_no, undefined, { numeric: true, sensitivity: 'base' });
+    });
+  }
+
   // ── Data loading ───────────────────────────────────────────────────────
   async function loadStudents() {
     if (!sb) { students = DEMO_STUDENTS; return; }
     const { data, error } = await sb.from('students1')
       .select('*')
       .eq('class_name', currentClass)
-      .eq('batch_name', currentBatch)
-      .order('roll_no', { ascending: true, nullsFirst: false });
+      .eq('batch_name', currentBatch);
     if (error) { setStatus('Could not load students: ' + error.message, true); students = []; return; }
-    students = data || [];
+    students = sortStudents(data || []);
   }
 
   async function loadAttendance() {
@@ -317,12 +326,7 @@
       } else {
         students.push({ id: `demo-${Date.now()}`, name, roll_no: roll || null });
       }
-      students.sort((a, b) => {
-        if (!a.roll_no && !b.roll_no) return a.name.localeCompare(b.name);
-        if (!a.roll_no) return 1;
-        if (!b.roll_no) return -1;
-        return a.roll_no.localeCompare(b.roll_no, undefined, { numeric: true, sensitivity: 'base' });
-      });
+      sortStudents(students);
       nameEl.value = '';
       rollEl.value = '';
       setStatus(`${name} added.`, false);
@@ -550,12 +554,7 @@
           students.push({ id: `demo-${Date.now()}-${Math.random()}`, name: r.name, roll_no: r.roll || null });
         });
       }
-      students.sort((a, b) => {
-        if (!a.roll_no && !b.roll_no) return a.name.localeCompare(b.name);
-        if (!a.roll_no) return 1;
-        if (!b.roll_no) return -1;
-        return a.roll_no.localeCompare(b.roll_no, undefined, { numeric: true, sensitivity: 'base' });
-      });
+      sortStudents(students);
       setStatus(`${importRows.length} student${importRows.length > 1 ? 's' : ''} imported.`, false);
       importRows = [];
       document.getElementById('importPanel').style.display = 'none';
