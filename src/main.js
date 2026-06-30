@@ -448,6 +448,13 @@
       document.getElementById('classInput').value = savedClass;
       document.getElementById('batchInput').value = savedBatch;
       await onLoadContext();
+      // If the saved class/batch no longer has any students, it was likely deleted —
+      // clear localStorage and return to the form so the user starts fresh.
+      if (sb && students.length === 0) {
+        try { localStorage.removeItem(LS_CLASS); localStorage.removeItem(LS_BATCH); } catch (_) {}
+        onSwitchRegister();
+        setStatus('Saved register not found — please load a new one.', true);
+      }
     }
   })();
 })();
