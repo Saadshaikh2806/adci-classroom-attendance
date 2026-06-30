@@ -364,10 +364,11 @@
   }
 
   function onSwitchRegister() {
-    // show the context card again, pre-filled with current values
     document.getElementById('registerBar').style.display = 'none';
+    document.getElementById('toolbar').style.display = 'none';
+    document.getElementById('tableCard').style.display = 'none';
     document.getElementById('contextCard').style.display = 'block';
-    // keep inputs filled so teacher can see / edit current values
+    document.getElementById('landingHint').style.display = 'flex';
   }
 
   function setStatus(msg, isError) {
