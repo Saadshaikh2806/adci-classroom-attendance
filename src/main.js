@@ -385,7 +385,7 @@
     if (!students.length) { setStatus('No students to export.', true); return; }
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'landscape' });
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
