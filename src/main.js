@@ -330,11 +330,23 @@
     }
   }
 
-  function onAddLecture() {
+  async function onAddLecture() {
     if (!contextLoaded || !isToday()) return;
+    // Auto-mark all unmarked students in the current lecture as Absent
+    await autoAbsentLecture(lectureCount);
     lectureCount += 1;
     renderAll();
     setStatus(`Lecture ${lectureCount} added.`, false);
+  }
+
+  async function autoAbsentLecture(lec) {
+    const time = nowTimeStr();
+    const unmarked = students.filter(s => !attendanceState[`${s.id}__${lec}`]);
+    await Promise.all(unmarked.map(async s => {
+      const key = `${s.id}__${lec}`;
+      const rowId = await upsertAttendance(s.id, lec, 'Absent', time, undefined);
+      attendanceState[key] = { status: 'Absent', time, rowId };
+    }));
   }
 
   // ── Load / switch register ─────────────────────────────────────────────
