@@ -34,10 +34,13 @@
     '#f97316', '#3b82f6',
   ];
 
+  const SESSION_TYPES = ['Lecture', 'Test'];
+
   // ── State ──────────────────────────────────────────────────────────────
   let students       = [];
   let attendanceState = {};
   let lectureCount   = 1;
+  let testCount      = 0;
   let currentClass   = '';
   let currentBatch   = '';
   let viewDate       = '';
@@ -83,6 +86,9 @@
   }
 
   function isToday() { return viewDate === todayStr(); }
+
+  function sessionKey(studentId, type, number) { return `${studentId}__${type}__${number}`; }
+  function sessionLabel(type, number) { return `${type === 'Test' ? 'T' : 'L'}${number}`; }
 
   // ── Clock ──────────────────────────────────────────────────────────────
   function tickClock() {
@@ -274,6 +280,7 @@
   async function loadAttendance() {
     attendanceState = {};
     lectureCount = 1;
+    testCount = 0;
     if (!students.length || !sb) return;
     const ids = students.map(s => s.id);
     const { data, error } = await sb.from('attendance1')
@@ -281,38 +288,55 @@
       .eq('attendance_date', viewDate)
       .in('student_id', ids);
     if (error) { setStatus('Could not load attendance: ' + error.message, true); return; }
-    let max = 1;
+    let maxLecture = 1, maxTest = 0;
     (data || []).forEach(row => {
-      attendanceState[`${row.student_id}__${row.lecture_number}`] = {
+      const type = row.session_type || 'Lecture';
+      attendanceState[sessionKey(row.student_id, type, row.lecture_number)] = {
         status: row.status, time: row.attendance_time, rowId: row.id
       };
-      if (row.lecture_number > max) max = row.lecture_number;
+      if (type === 'Test') { if (row.lecture_number > maxTest) maxTest = row.lecture_number; }
+      else if (row.lecture_number > maxLecture) maxLecture = row.lecture_number;
     });
-    lectureCount = max;
+    lectureCount = maxLecture;
+    testCount = maxTest;
   }
 
   // ── Render ─────────────────────────────────────────────────────────────
+  function allSessions() {
+    const sessions = [];
+    for (let i = 1; i <= lectureCount; i++) sessions.push({ type: 'Lecture', number: i });
+    for (let i = 1; i <= testCount; i++) sessions.push({ type: 'Test', number: i });
+    return sessions;
+  }
+
   function renderLectureSummary() {
     const bar = document.getElementById('lectureSummaryBar');
     bar.innerHTML = '';
 
-    for (let i = 1; i <= lectureCount; i++) {
-      const present = students.filter(s => attendanceState[`${s.id}__${i}`]?.status === 'Present').length;
+    allSessions().forEach(({ type, number }) => {
+      const present = students.filter(s => attendanceState[sessionKey(s.id, type, number)]?.status === 'Present').length;
       const chip = document.createElement('div');
-      chip.className = 'lec-summary-chip';
+      chip.className = 'lec-summary-chip' + (type === 'Test' ? ' type-test' : '');
       chip.innerHTML =
-        `<span class="lec-summary-label">L${i}</span>` +
+        `<span class="lec-summary-label">${sessionLabel(type, number)}</span>` +
         `<span class="lec-summary-stat">${present}/${students.length}</span>`;
       bar.appendChild(chip);
-    }
+    });
 
     if (isToday()) {
-      const btn = document.createElement('button');
-      btn.className = 'add-lec-chip-btn';
-      btn.innerHTML =
+      const lecBtn = document.createElement('button');
+      lecBtn.className = 'add-lec-chip-btn';
+      lecBtn.innerHTML =
         `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add lecture`;
-      btn.addEventListener('click', onAddLecture);
-      bar.appendChild(btn);
+      lecBtn.addEventListener('click', () => onAddSession('Lecture'));
+      bar.appendChild(lecBtn);
+
+      const testBtn = document.createElement('button');
+      testBtn.className = 'add-lec-chip-btn type-test';
+      testBtn.innerHTML =
+        `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Add test`;
+      testBtn.addEventListener('click', () => onAddSession('Test'));
+      bar.appendChild(testBtn);
     }
   }
 
@@ -349,16 +373,17 @@
         </button>`;
 
       const chips = card.querySelector('.lec-chips');
-      for (let lec = 1; lec <= lectureCount; lec++) {
+      allSessions().forEach(({ type, number }) => {
         const btn = document.createElement('button');
-        btn.className = 'lec-chip';
-        btn.dataset.studentId = s.id;
-        btn.dataset.lecture   = lec;
+        btn.className = 'lec-chip' + (type === 'Test' ? ' type-test' : '');
+        btn.dataset.studentId   = s.id;
+        btn.dataset.sessionType = type;
+        btn.dataset.number      = number;
         btn.disabled = readOnly;
-        applyChipState(btn, lec, attendanceState[`${s.id}__${lec}`]);
+        applyChipState(btn, type, number, attendanceState[sessionKey(s.id, type, number)]);
         btn.addEventListener('click', onMarkClick);
         chips.appendChild(btn);
-      }
+      });
 
       card.querySelector('.student-delete-btn').addEventListener('click', () => onDeleteStudent(s));
 
@@ -390,17 +415,18 @@
     }
   }
 
-  function applyChipState(btn, lec, state) {
+  function applyChipState(btn, type, number, state) {
+    const label = sessionLabel(type, number);
     btn.classList.remove('chip-present', 'chip-absent');
     if (!state) {
-      btn.innerHTML = `<span class="chip-lec">L${lec}</span><span class="chip-mark">—</span>`;
+      btn.innerHTML = `<span class="chip-lec">${label}</span><span class="chip-mark">—</span>`;
     } else if (state.status === 'Present') {
       btn.classList.add('chip-present');
-      btn.innerHTML = `<span class="chip-lec">L${lec}</span><span class="chip-mark">✓</span>`;
+      btn.innerHTML = `<span class="chip-lec">${label}</span><span class="chip-mark">✓</span>`;
       btn.title = formatTime(state.time);
     } else {
       btn.classList.add('chip-absent');
-      btn.innerHTML = `<span class="chip-lec">L${lec}</span><span class="chip-mark">✕</span>`;
+      btn.innerHTML = `<span class="chip-lec">${label}</span><span class="chip-mark">✕</span>`;
       btn.title = formatTime(state.time);
     }
   }
@@ -428,8 +454,9 @@
     const chips = document.querySelector(`.lec-chips[data-student-id="${studentId}"]`);
     if (!chips) return;
     chips.querySelectorAll('.lec-chip').forEach(btn => {
-      const lec = parseInt(btn.dataset.lecture, 10);
-      applyChipState(btn, lec, attendanceState[`${studentId}__${lec}`]);
+      const type   = btn.dataset.sessionType;
+      const number = parseInt(btn.dataset.number, 10);
+      applyChipState(btn, type, number, attendanceState[sessionKey(studentId, type, number)]);
     });
   }
 
@@ -437,22 +464,23 @@
   async function onMarkClick(e) {
     const btn       = e.currentTarget;
     const studentId = btn.dataset.studentId;
-    const lecture   = parseInt(btn.dataset.lecture, 10);
-    const key       = `${studentId}__${lecture}`;
+    const type      = btn.dataset.sessionType;
+    const number    = parseInt(btn.dataset.number, 10);
+    const key       = sessionKey(studentId, type, number);
     const current   = attendanceState[key];
     const nextStatus = !current ? 'Present' : current.status === 'Present' ? 'Absent' : null;
 
     btn.disabled = true;
     try {
       if (nextStatus === null) {
-        await removeAttendance(studentId, lecture);
+        await removeAttendance(studentId, type, number);
         delete attendanceState[key];
       } else {
         const time  = nowTimeStr();
-        const rowId = await upsertAttendance(studentId, lecture, nextStatus, time, current?.rowId);
+        const rowId = await upsertAttendance(studentId, type, number, nextStatus, time, current?.rowId);
         attendanceState[key] = { status: nextStatus, time, rowId };
       }
-      applyChipState(btn, lecture, attendanceState[key]);
+      applyChipState(btn, type, number, attendanceState[key]);
       refreshAfterMark(studentId);
     } catch (err) {
       setStatus('Could not save: ' + err.message, true);
@@ -461,27 +489,29 @@
     }
   }
 
-  async function upsertAttendance(studentId, lecture, status, time, existingRowId) {
+  async function upsertAttendance(studentId, type, number, status, time, existingRowId) {
     if (!sb) return existingRowId || `demo-${Math.random()}`;
     const { data, error } = await sb.from('attendance1')
       .upsert({
         student_id:      studentId,
-        lecture_number:  lecture,
+        lecture_number:  number,
+        session_type:    type,
         attendance_date: viewDate,
         attendance_time: time,
         status,
-      }, { onConflict: 'student_id,lecture_number,attendance_date' })
+      }, { onConflict: 'student_id,lecture_number,attendance_date,session_type' })
       .select().single();
     if (error) throw error;
     return data.id;
   }
 
-  async function removeAttendance(studentId, lecture) {
+  async function removeAttendance(studentId, type, number) {
     if (!sb) return;
     const { error } = await sb.from('attendance1')
       .delete()
       .eq('student_id',      studentId)
-      .eq('lecture_number',  lecture)
+      .eq('lecture_number',  number)
+      .eq('session_type',    type)
       .eq('attendance_date', viewDate);
     if (error) throw error;
   }
@@ -520,21 +550,22 @@
     }
   }
 
-  async function onAddLecture() {
+  async function onAddSession(type) {
     if (!contextLoaded || !isToday()) return;
-    // Auto-mark all unmarked students in the current lecture as Absent
-    await autoAbsentLecture(lectureCount);
-    lectureCount += 1;
+    const currentNumber = type === 'Test' ? testCount : lectureCount;
+    // Auto-mark all unmarked students in the current session as Absent
+    if (currentNumber > 0) await autoAbsentSession(type, currentNumber);
+    if (type === 'Test') testCount += 1; else lectureCount += 1;
     renderAll();
-    setStatus(`Lecture ${lectureCount} added.`, false);
+    setStatus(`${sessionLabel(type, type === 'Test' ? testCount : lectureCount)} added.`, false);
   }
 
-  async function autoAbsentLecture(lec) {
+  async function autoAbsentSession(type, number) {
     const time = nowTimeStr();
-    const unmarked = students.filter(s => !attendanceState[`${s.id}__${lec}`]);
+    const unmarked = students.filter(s => !attendanceState[sessionKey(s.id, type, number)]);
     await Promise.all(unmarked.map(async s => {
-      const key = `${s.id}__${lec}`;
-      const rowId = await upsertAttendance(s.id, lec, 'Absent', time, undefined);
+      const key = sessionKey(s.id, type, number);
+      const rowId = await upsertAttendance(s.id, type, number, 'Absent', time, undefined);
       attendanceState[key] = { status: 'Absent', time, rowId };
     }));
   }
@@ -612,14 +643,15 @@
     doc.setFontSize(10);
     doc.text(`Class: ${currentClass}   |   Batch: ${currentBatch}   |   Date: ${formatDateLong(viewDate)}`, 14, 24);
 
-    const lectureHeaders = Array.from({ length: lectureCount }, (_, i) => `Lecture ${i + 1}`);
-    const head = [['#', 'Name', 'Roll No', ...lectureHeaders]];
+    const sessions = allSessions();
+    const sessionHeaders = sessions.map(({ type, number }) => `${type} ${number}`);
+    const head = [['#', 'Name', 'Roll No', ...sessionHeaders]];
     const body = students.map((s, idx) => {
       const row = [idx + 1, s.name, s.roll_no || '-'];
-      for (let lec = 1; lec <= lectureCount; lec++) {
-        const st = attendanceState[`${s.id}__${lec}`];
+      sessions.forEach(({ type, number }) => {
+        const st = attendanceState[sessionKey(s.id, type, number)];
         row.push(st ? `${st.status} (${formatTime(st.time)})` : 'Not marked');
-      }
+      });
       return row;
     });
 

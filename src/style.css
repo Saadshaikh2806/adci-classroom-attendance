@@ -535,6 +535,16 @@ button { font-family: inherit; cursor: pointer; }
 }
 .add-lec-chip-btn:hover { background: #e0e7ff; }
 
+.lec-summary-chip.type-test { border-color: var(--warn-border); background: var(--warn-bg); }
+.lec-summary-chip.type-test .lec-summary-label { color: var(--warn-text); }
+
+.add-lec-chip-btn.type-test {
+  background: var(--warn-bg);
+  border-color: #d97706;
+  color: #92400e;
+}
+.add-lec-chip-btn.type-test:hover { background: #fef3c7; }
+
 /* Student cards */
 .student-list {
   display: flex;
@@ -673,6 +683,12 @@ button { font-family: inherit; cursor: pointer; }
 }
 .lec-chip.chip-absent .chip-lec { color: var(--absent); opacity: .7; }
 .lec-chip.chip-absent .chip-mark { color: var(--absent); }
+
+.lec-chip.type-test:not(.chip-present):not(.chip-absent) {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+}
+.lec-chip.type-test:not(.chip-present):not(.chip-absent) .chip-lec { color: var(--warn-text); opacity: .8; }
 
 /* ── Empty / landing states ───────────────────────────────── */
 .empty-state {
