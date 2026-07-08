@@ -146,6 +146,12 @@
     return String(Math.floor(100000 + Math.random() * 900000));
   }
 
+  function nextAvailableColor(existingColors) {
+    const used = new Set(existingColors.filter(Boolean));
+    const free = CLASS_COLORS.find(c => !used.has(c));
+    return free || CLASS_COLORS[used.size % CLASS_COLORS.length];
+  }
+
   async function loadClasses() {
     if (!sb) {
       classesList = [{ class_name: DEMO_CLASS, batch_name: DEMO_BATCH, code: '000000', color: CLASS_COLORS[0] }];
@@ -153,13 +159,26 @@
       return;
     }
     const { data, error } = await sb.from('classes1').select('*').order('created_at', { ascending: true });
-    if (error) { setStatus('Could not load classes: ' + error.message, true); classesList = []; }
-    else classesList = data || [];
+    if (error) { setStatus('Could not load classes: ' + error.message, true); classesList = []; renderClasses(); return; }
+    classesList = data || [];
+
+    // Self-heal: reassign colors for any classes sharing a color with an earlier one.
+    const seen = new Set();
+    const fixes = [];
+    for (const c of classesList) {
+      if (c.color && !seen.has(c.color)) { seen.add(c.color); continue; }
+      const color = nextAvailableColor(classesList.map(x => x.color));
+      c.color = color;
+      seen.add(color);
+      fixes.push(sb.from('classes1').update({ color }).eq('id', c.id));
+    }
+    if (fixes.length) await Promise.all(fixes);
+
     renderClasses();
   }
 
   async function createClass(className, batchName) {
-    const color = CLASS_COLORS[classesList.length % CLASS_COLORS.length];
+    const color = nextAvailableColor(classesList.map(c => c.color));
     if (!sb) {
       const row = { class_name: className, batch_name: batchName, code: generateCode(), color };
       classesList.push(row);
