@@ -40,8 +40,21 @@
     Supabase is not connected — add your keys to <code>.env</code> (copy <code>.env.example</code>). Showing demo data for preview.
   </div>
 
-  <!-- Context card (hidden after a register is loaded) -->
-  <section class="card context-card" id="contextCard">
+  <!-- Classes grid (hidden after a register is loaded) -->
+  <section class="card classes-card" id="classesCard">
+    <div class="classes-header">
+      <div class="classes-title">Your classes</div>
+      <button class="btn btn-ghost btn-sm" id="newClassBtn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New class
+      </button>
+    </div>
+    <div class="classes-grid" id="classesGrid"></div>
+    <div class="classes-empty" id="classesEmpty" style="display:none">No classes yet — click <strong>New class</strong> to create one.</div>
+  </section>
+
+  <!-- Create-new-class form (hidden by default) -->
+  <section class="card context-card" id="contextCard" style="display:none">
     <div class="context-fields">
       <div class="field-group">
         <label for="classInput">Class</label>
@@ -59,10 +72,44 @@
       </div>
       <button class="btn btn-primary" id="loadContextBtn">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.49"/></svg>
-        Load register
+        Create class
       </button>
+      <button class="btn btn-ghost" id="cancelNewClassBtn">Cancel</button>
     </div>
   </section>
+
+  <!-- Passcode modal -->
+  <div class="modal-overlay" id="passcodeModal" style="display:none">
+    <div class="modal card">
+      <div class="modal-title" id="passcodeClassLabel"></div>
+      <p class="modal-hint">Enter the class passcode to open and mark the register.</p>
+      <div class="field-group">
+        <label for="passcodeInput">Passcode</label>
+        <input type="text" id="passcodeInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••••" autocomplete="off" />
+      </div>
+      <div class="field-group">
+        <label for="passcodeDateInput">Date</label>
+        <input type="date" id="passcodeDateInput" />
+      </div>
+      <div class="modal-error" id="passcodeError"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="passcodeCancelBtn">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="passcodeSubmitBtn">Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generic dialog (confirm / info) — replaces window.confirm/alert -->
+  <div class="modal-overlay" id="dialogModal" style="display:none">
+    <div class="modal card">
+      <div class="modal-title" id="dialogTitle"></div>
+      <div class="modal-hint" id="dialogMessage"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="dialogCancelBtn">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="dialogOkBtn">OK</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Active register bar (shown after load, replaces context card) -->
   <div class="register-bar" id="registerBar" style="display:none">
@@ -101,7 +148,7 @@
     <div class="import-header">
       <div>
         <div class="import-title">Bulk import students</div>
-        <div class="import-hint">Paste CSV below or upload a file — one student per row, columns: <code>Name, Roll No</code> (roll no optional). Header row is auto-detected.</div>
+        <div class="import-hint">Paste CSV below or upload a file — one student per row, columns: <code>Name, Roll No</code> (roll no optional), or <code>S.No, Name, Roll No</code> — a leading serial number column is detected and stripped automatically. Header row is auto-detected.</div>
       </div>
       <button class="icon-btn" id="importCloseBtn" aria-label="Close">✕</button>
     </div>
@@ -136,7 +183,7 @@
 
   <div class="landing-hint" id="landingHint">
     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-    <p>Enter a class and batch above, then click <strong>Load register</strong> to begin.</p>
+    <p>Click a class card above and enter its passcode to open the register.</p>
   </div>
 
   <footer>

@@ -26,6 +26,13 @@
 
   const LS_CLASS = 'adci_class';
   const LS_BATCH = 'adci_batch';
+  const LS_CODE  = 'adci_code';
+
+  const CLASS_COLORS = [
+    '#6366f1', '#0ea5e9', '#f59e0b', '#ef4444',
+    '#10b981', '#8b5cf6', '#ec4899', '#14b8a6',
+    '#f97316', '#3b82f6',
+  ];
 
   // ── State ──────────────────────────────────────────────────────────────
   let students       = [];
@@ -35,6 +42,8 @@
   let currentBatch   = '';
   let viewDate       = '';
   let contextLoaded  = false;
+  let classesList    = [];
+  let pendingClass    = null;
 
   // ── Helpers ────────────────────────────────────────────────────────────
   const pad = n => String(n).padStart(2, '0');
@@ -96,6 +105,149 @@
       classes.map(v => `<option value="${escapeHtml(v)}"></option>`).join('');
     document.getElementById('batchOptions').innerHTML =
       batches.map(v => `<option value="${escapeHtml(v)}"></option>`).join('');
+  }
+
+  // ── Generic dialog (replaces window.confirm/alert) ────────────────────
+  let dialogResolve = null;
+
+  function showDialog({ title, html, okLabel = 'OK', showCancel = true, danger = false }) {
+    return new Promise(resolve => {
+      dialogResolve = resolve;
+      document.getElementById('dialogTitle').textContent = title;
+      document.getElementById('dialogMessage').innerHTML = html;
+      const okBtn = document.getElementById('dialogOkBtn');
+      okBtn.textContent = okLabel;
+      okBtn.style.background   = danger ? 'var(--absent)' : '';
+      okBtn.style.borderColor  = danger ? 'var(--absent)' : '';
+      document.getElementById('dialogCancelBtn').style.display = showCancel ? 'inline-flex' : 'none';
+      document.getElementById('dialogModal').style.display = 'flex';
+    });
+  }
+
+  function closeDialog(result) {
+    document.getElementById('dialogModal').style.display = 'none';
+    if (dialogResolve) { dialogResolve(result); dialogResolve = null; }
+  }
+
+  document.getElementById('dialogOkBtn').addEventListener('click', () => closeDialog(true));
+  document.getElementById('dialogCancelBtn').addEventListener('click', () => closeDialog(false));
+  document.getElementById('dialogModal').addEventListener('click', e => {
+    if (e.target.id === 'dialogModal') closeDialog(false);
+  });
+
+  // ── Classes (cards + passcode) ────────────────────────────────────────
+  function generateCode() {
+    return String(Math.floor(100000 + Math.random() * 900000));
+  }
+
+  async function loadClasses() {
+    if (!sb) {
+      classesList = [{ class_name: DEMO_CLASS, batch_name: DEMO_BATCH, code: '000000', color: CLASS_COLORS[0] }];
+      renderClasses();
+      return;
+    }
+    const { data, error } = await sb.from('classes1').select('*').order('created_at', { ascending: true });
+    if (error) { setStatus('Could not load classes: ' + error.message, true); classesList = []; }
+    else classesList = data || [];
+    renderClasses();
+  }
+
+  async function createClass(className, batchName) {
+    const color = CLASS_COLORS[classesList.length % CLASS_COLORS.length];
+    if (!sb) {
+      const row = { class_name: className, batch_name: batchName, code: generateCode(), color };
+      classesList.push(row);
+      return row;
+    }
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { data, error } = await sb.from('classes1')
+        .insert({ class_name: className, batch_name: batchName, code: generateCode(), color })
+        .select().single();
+      if (!error) return data;
+      if (!/code/i.test(error.message || '')) throw error; // not a code-uniqueness clash
+    }
+    throw new Error('Could not generate a unique passcode, please try again.');
+  }
+
+  function renderClasses() {
+    const grid  = document.getElementById('classesGrid');
+    const empty = document.getElementById('classesEmpty');
+    grid.innerHTML = '';
+
+    if (!classesList.length) {
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    classesList.forEach(c => {
+      const card = document.createElement('button');
+      card.className = 'class-card';
+      card.type = 'button';
+      card.style.background = c.color || CLASS_COLORS[0];
+      card.innerHTML = `
+        <div>
+          <div class="class-card-name">${escapeHtml(c.class_name)}</div>
+          <div class="class-card-batch">${escapeHtml(c.batch_name)}</div>
+        </div>
+        <svg class="class-card-lock" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+      card.addEventListener('click', () => openPasscodeModal(c));
+      grid.appendChild(card);
+    });
+  }
+
+  function openPasscodeModal(classRow) {
+    pendingClass = classRow;
+    document.getElementById('passcodeClassLabel').textContent = `${classRow.class_name} · ${classRow.batch_name}`;
+    document.getElementById('passcodeInput').value = '';
+    document.getElementById('passcodeError').textContent = '';
+    const dateEl = document.getElementById('passcodeDateInput');
+    dateEl.value = todayStr();
+    dateEl.max   = todayStr();
+    document.getElementById('passcodeModal').style.display = 'flex';
+    document.getElementById('passcodeInput').focus();
+  }
+
+  function closePasscodeModal() {
+    pendingClass = null;
+    document.getElementById('passcodeModal').style.display = 'none';
+  }
+
+  async function onPasscodeSubmit() {
+    if (!pendingClass) return;
+    const entered = document.getElementById('passcodeInput').value.trim();
+    if (entered !== String(pendingClass.code)) {
+      document.getElementById('passcodeError').textContent = 'Incorrect passcode — try again.';
+      return;
+    }
+    const d = document.getElementById('passcodeDateInput').value || todayStr();
+    const { class_name, batch_name, code } = pendingClass;
+    closePasscodeModal();
+    await enterRegister(class_name, batch_name, d, code);
+  }
+
+  async function enterRegister(className, batchName, date, code) {
+    currentClass = className; currentBatch = batchName; viewDate = date; contextLoaded = true;
+
+    try {
+      localStorage.setItem(LS_CLASS, className);
+      localStorage.setItem(LS_BATCH, batchName);
+      localStorage.setItem(LS_CODE, code);
+    } catch (_) {}
+
+    setStatus('Loading…', false);
+    await loadStudents();
+    await loadAttendance();
+
+    document.getElementById('classesCard').style.display = 'none';
+    document.getElementById('contextCard').style.display = 'none';
+    document.getElementById('registerBar').style.display = 'flex';
+    document.getElementById('toolbar').style.display = 'flex';
+    document.getElementById('tableCard').style.display = 'block';
+    document.getElementById('landingHint').style.display = 'none';
+    renderAll();
+    refreshOptions();
+    setStatus('', false);
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
@@ -191,7 +343,10 @@
             ${s.roll_no ? `<div class="student-roll">${escapeHtml(s.roll_no)}</div>` : ''}
           </div>
         </div>
-        <div class="lec-chips" data-student-id="${s.id}"></div>`;
+        <div class="lec-chips" data-student-id="${s.id}"></div>
+        <button class="student-delete-btn" type="button" title="Delete student" aria-label="Delete ${escapeHtml(s.name)}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </button>`;
 
       const chips = card.querySelector('.lec-chips');
       for (let lec = 1; lec <= lectureCount; lec++) {
@@ -205,8 +360,34 @@
         chips.appendChild(btn);
       }
 
+      card.querySelector('.student-delete-btn').addEventListener('click', () => onDeleteStudent(s));
+
       list.appendChild(card);
     });
+  }
+
+  async function onDeleteStudent(s) {
+    const ok = await showDialog({
+      title: 'Delete student?',
+      html: `Delete <strong>${escapeHtml(s.name)}</strong> from this class? This also removes their attendance records.`,
+      okLabel: 'Delete', danger: true,
+    });
+    if (!ok) return;
+    try {
+      if (sb) {
+        const { error } = await sb.from('students1').delete().eq('id', s.id);
+        if (error) throw error;
+      }
+      students = students.filter(x => x.id !== s.id);
+      Object.keys(attendanceState).forEach(key => {
+        if (key.startsWith(`${s.id}__`)) delete attendanceState[key];
+      });
+      setStatus(`${s.name} removed.`, false);
+      renderAll();
+      refreshOptions();
+    } catch (err) {
+      setStatus('Could not delete student: ' + err.message, true);
+    }
   }
 
   function applyChipState(btn, lec, state) {
@@ -358,35 +539,40 @@
     }));
   }
 
-  // ── Load / switch register ─────────────────────────────────────────────
+  // ── Create new class / switch register ─────────────────────────────────
   async function onLoadContext() {
     const c = document.getElementById('classInput').value.trim();
     const b = document.getElementById('batchInput').value.trim();
     const d = document.getElementById('dateInput').value || todayStr();
     if (!c || !b) { setStatus('Enter both a class and a batch.', true); return; }
 
-    currentClass = c; currentBatch = b; viewDate = d; contextLoaded = true;
-
-    // persist for next session
-    try { localStorage.setItem(LS_CLASS, c); localStorage.setItem(LS_BATCH, b); } catch (_) {}
+    const dupe = classesList.find(cl =>
+      cl.class_name.toLowerCase() === c.toLowerCase() &&
+      cl.batch_name.toLowerCase() === b.toLowerCase());
+    if (dupe) {
+      setStatus('That class already exists — click its card above and enter the passcode.', true);
+      return;
+    }
 
     const loadBtn = document.getElementById('loadContextBtn');
     loadBtn.disabled = true;
-    setStatus('Loading…', false);
+    setStatus('Creating class…', false);
 
     try {
-      await loadStudents();
-      await loadAttendance();
-
-      // hide context card, show register bar + content
-      document.getElementById('contextCard').style.display = 'none';
-      document.getElementById('registerBar').style.display = 'flex';
-      document.getElementById('toolbar').style.display = 'flex';
-      document.getElementById('tableCard').style.display = 'block';
-      document.getElementById('landingHint').style.display = 'none';
-      renderAll();
-      refreshOptions();
-      setStatus('', false);
+      const row = await createClass(c, b);
+      classesList.push(row);
+      renderClasses();
+      document.getElementById('classInput').value = '';
+      document.getElementById('batchInput').value = '';
+      await showDialog({
+        title: 'Class created',
+        html: `<span style="display:block;margin-bottom:10px">Save this passcode — it's required to open and mark attendance for <strong>${escapeHtml(c)} · ${escapeHtml(b)}</strong>.</span>` +
+              `<span style="display:block;font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;letter-spacing:3px;text-align:center;color:var(--primary)">${escapeHtml(row.code)}</span>`,
+        okLabel: 'Got it', showCancel: false,
+      });
+      await enterRegister(c, b, d, row.code);
+    } catch (err) {
+      setStatus('Could not create class: ' + err.message, true);
     } finally {
       loadBtn.disabled = false;
     }
@@ -396,8 +582,10 @@
     document.getElementById('registerBar').style.display = 'none';
     document.getElementById('toolbar').style.display = 'none';
     document.getElementById('tableCard').style.display = 'none';
-    document.getElementById('contextCard').style.display = 'block';
+    document.getElementById('contextCard').style.display = 'none';
+    document.getElementById('classesCard').style.display = 'block';
     document.getElementById('landingHint').style.display = 'flex';
+    loadClasses();
   }
 
   function setStatus(msg, isError) {
@@ -456,6 +644,23 @@
   document.getElementById('classInput').addEventListener('keydown', e => e.key === 'Enter' && onLoadContext());
   document.getElementById('batchInput').addEventListener('keydown', e => e.key === 'Enter' && onLoadContext());
 
+  document.getElementById('newClassBtn').addEventListener('click', () => {
+    document.getElementById('contextCard').style.display = 'block';
+    document.getElementById('classInput').focus();
+  });
+  document.getElementById('cancelNewClassBtn').addEventListener('click', () => {
+    document.getElementById('contextCard').style.display = 'none';
+    document.getElementById('classInput').value = '';
+    document.getElementById('batchInput').value = '';
+  });
+
+  document.getElementById('passcodeSubmitBtn').addEventListener('click', onPasscodeSubmit);
+  document.getElementById('passcodeCancelBtn').addEventListener('click', closePasscodeModal);
+  document.getElementById('passcodeInput').addEventListener('keydown', e => e.key === 'Enter' && onPasscodeSubmit());
+  document.getElementById('passcodeModal').addEventListener('click', e => {
+    if (e.target.id === 'passcodeModal') closePasscodeModal();
+  });
+
   // ── Bulk import ──────────────────────────────────────────────────────────
   let importRows = []; // parsed & deduplicated rows ready to insert
 
@@ -490,12 +695,19 @@
       .map(line => line.trim())
       .filter(Boolean)
       .map(line => {
-        const parts = line.split(',').map(p => p.trim());
-        const name  = parts[0] || '';
-        const roll  = parts[1] || '';
+        let parts = line.split(',').map(p => p.trim());
+        // If a leading serial-number column is present (e.g. "1, Aarav Mehta, ADCI-01"),
+        // strip it without reordering the remaining columns.
+        if (parts.length >= 2 && /^\d+$/.test(parts[0]) && parts[1] && !/^\d+$/.test(parts[1])) {
+          parts = parts.slice(1);
+        }
+        const name = parts[0] || '';
+        const roll = parts[1] || '';
         return { name, roll };
       })
-      .filter(r => r.name && !/^name$/i.test(r.name)); // skip header rows
+      .filter(r => r.name &&
+        !/^name$/i.test(r.name) &&
+        !/^(s\.?\s?no\.?|sr\.?\s?no\.?|serial(\s?no)?)$/i.test(r.name)); // skip header rows
   }
 
   function onImportParse() {
@@ -582,28 +794,34 @@
     dateEl.max   = todayStr();
 
     await refreshOptions();
+    await loadClasses();
 
-    // Try to auto-load from last session
-    let savedClass = '', savedBatch = '';
+    // Try to auto-resume last session, but only if the saved passcode still
+    // matches a real class — otherwise the user must unlock via the card again.
+    let savedClass = '', savedBatch = '', savedCode = '';
     try {
       savedClass = localStorage.getItem(LS_CLASS) || '';
       savedBatch = localStorage.getItem(LS_BATCH) || '';
+      savedCode  = localStorage.getItem(LS_CODE) || '';
     } catch (_) {}
 
-    // Fall back to demo values when Supabase isn't configured
-    if (!sb) { savedClass = DEMO_CLASS; savedBatch = DEMO_BATCH; }
+    if (!sb) {
+      await enterRegister(DEMO_CLASS, DEMO_BATCH, todayStr(), '000000');
+      return;
+    }
 
-    if (savedClass && savedBatch) {
-      document.getElementById('classInput').value = savedClass;
-      document.getElementById('batchInput').value = savedBatch;
-      await onLoadContext();
-      // If the saved class/batch no longer has any students, it was likely deleted —
-      // clear localStorage and return to the form so the user starts fresh.
-      if (sb && students.length === 0) {
-        try { localStorage.removeItem(LS_CLASS); localStorage.removeItem(LS_BATCH); } catch (_) {}
-        onSwitchRegister();
-        setStatus('Saved register not found — please load a new one.', true);
+    if (savedClass && savedBatch && savedCode) {
+      const match = classesList.find(c =>
+        c.class_name === savedClass && c.batch_name === savedBatch && String(c.code) === savedCode);
+      if (match) {
+        await enterRegister(savedClass, savedBatch, todayStr(), savedCode);
+        return;
       }
+      try {
+        localStorage.removeItem(LS_CLASS);
+        localStorage.removeItem(LS_BATCH);
+        localStorage.removeItem(LS_CODE);
+      } catch (_) {}
     }
   })();
 })();
