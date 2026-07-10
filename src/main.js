@@ -142,6 +142,8 @@
   });
 
   // ── Classes (cards + passcode) ────────────────────────────────────────
+  const NEW_CLASS_PASSCODE = '0001';
+
   function generateCode() {
     return String(Math.floor(100000 + Math.random() * 900000));
   }
@@ -695,9 +697,32 @@
   document.getElementById('classInput').addEventListener('keydown', e => e.key === 'Enter' && onLoadContext());
   document.getElementById('batchInput').addEventListener('keydown', e => e.key === 'Enter' && onLoadContext());
 
-  document.getElementById('newClassBtn').addEventListener('click', () => {
+  function openNewClassGate() {
+    document.getElementById('newClassGateInput').value = '';
+    document.getElementById('newClassGateError').textContent = '';
+    document.getElementById('newClassGateModal').style.display = 'flex';
+    document.getElementById('newClassGateInput').focus();
+  }
+  function closeNewClassGate() {
+    document.getElementById('newClassGateModal').style.display = 'none';
+  }
+  function onNewClassGateSubmit() {
+    const entered = document.getElementById('newClassGateInput').value.trim();
+    if (entered !== NEW_CLASS_PASSCODE) {
+      document.getElementById('newClassGateError').textContent = 'Incorrect passcode — try again.';
+      return;
+    }
+    closeNewClassGate();
     document.getElementById('contextCard').style.display = 'block';
     document.getElementById('classInput').focus();
+  }
+
+  document.getElementById('newClassBtn').addEventListener('click', openNewClassGate);
+  document.getElementById('newClassGateSubmitBtn').addEventListener('click', onNewClassGateSubmit);
+  document.getElementById('newClassGateCancelBtn').addEventListener('click', closeNewClassGate);
+  document.getElementById('newClassGateInput').addEventListener('keydown', e => e.key === 'Enter' && onNewClassGateSubmit());
+  document.getElementById('newClassGateModal').addEventListener('click', e => {
+    if (e.target.id === 'newClassGateModal') closeNewClassGate();
   });
   document.getElementById('cancelNewClassBtn').addEventListener('click', () => {
     document.getElementById('contextCard').style.display = 'none';
