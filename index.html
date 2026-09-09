@@ -100,18 +100,18 @@
   </div>
 
   <!-- New class gate (admin passcode) -->
-  <div class="modal-overlay" id="newClassGateModal" style="display:none">
+  <div class="modal-overlay" id="adminGateModal" style="display:none">
     <div class="modal card">
-      <div class="modal-title">Create a new class</div>
-      <p class="modal-hint">Enter the admin passcode to create a new class.</p>
+      <div class="modal-title" id="adminGateTitle">Admin passcode required</div>
+      <p class="modal-hint" id="adminGateHint">Enter the admin passcode to continue.</p>
       <div class="field-group">
-        <label for="newClassGateInput">Passcode</label>
-        <input type="text" id="newClassGateInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••" autocomplete="off" />
+        <label for="adminGateInput">Passcode</label>
+        <input type="password" id="adminGateInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••" autocomplete="off" />
       </div>
-      <div class="modal-error" id="newClassGateError"></div>
+      <div class="modal-error" id="adminGateError"></div>
       <div class="modal-actions">
-        <button class="btn btn-ghost btn-sm" id="newClassGateCancelBtn">Cancel</button>
-        <button class="btn btn-primary btn-sm" id="newClassGateSubmitBtn">Continue</button>
+        <button class="btn btn-ghost btn-sm" id="adminGateCancelBtn">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="adminGateSubmitBtn">Continue</button>
       </div>
     </div>
   </div>
@@ -128,6 +128,95 @@
     </div>
   </div>
 
+  <!-- Sender gate (only the message sender can notify parents) -->
+  <div class="modal-overlay" id="notifyGateModal" style="display:none">
+    <div class="modal card">
+      <div class="modal-title">Sender passcode required</div>
+      <p class="modal-hint">Sending absence messages to parents is restricted to the message sender. Enter the sender passcode to unlock it for this browser tab.</p>
+      <div class="field-group">
+        <label for="notifyGateInput">Passcode</label>
+        <input type="password" id="notifyGateInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••" autocomplete="off" />
+      </div>
+      <div class="modal-error" id="notifyGateError"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="notifyGateCancelBtn">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="notifyGateSubmitBtn">Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Name this lecture / test -->
+  <div class="modal-overlay" id="sessionNameModal" style="display:none">
+    <div class="modal card">
+      <div class="modal-title" id="sessionNameTitle">Name this lecture</div>
+      <p class="modal-hint">Give this session a topic so it reads as <strong>Lecture 1 — Java Basics</strong> in the register, the PDF and parent messages.</p>
+      <div class="field-group">
+        <label for="sessionNameInput">Topic</label>
+        <input type="text" id="sessionNameInput" placeholder="e.g. Java Basics" autocomplete="off" maxlength="60" />
+      </div>
+      <div class="modal-error" id="sessionNameError"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="sessionNameCancelBtn">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="sessionNameSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Parent phone editor -->
+  <div class="modal-overlay" id="phoneModal" style="display:none">
+    <div class="modal card">
+      <div class="modal-title" id="phoneModalTitle">Parent WhatsApp number</div>
+      <p class="modal-hint">Used to send absence notices. Include the country code, or enter a 10-digit number and <strong>+91</strong> is assumed.</p>
+      <div class="field-group">
+        <label for="phoneInput">Number</label>
+        <input type="tel" id="phoneInput" placeholder="e.g. 98765 43210" autocomplete="off" />
+      </div>
+      <div class="modal-hint phone-preview" id="phonePreview"></div>
+      <div class="modal-error" id="phoneError"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-sm" id="phoneCancelBtn">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="phoneSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notify absentees (WhatsApp day digest) -->
+  <div class="modal-overlay" id="notifyModal" style="display:none">
+    <div class="modal card modal-wide">
+      <div class="notify-header">
+        <div>
+          <div class="modal-title">Notify parents of absentees</div>
+          <p class="modal-hint" id="notifySubtitle"></p>
+        </div>
+        <button class="icon-btn" id="notifyCloseBtn" aria-label="Close">✕</button>
+      </div>
+
+      <details class="notify-template">
+        <summary>Message template</summary>
+        <p class="modal-hint">
+          Placeholders: <code>{name}</code> <code>{roll}</code> <code>{class}</code>
+          <code>{batch}</code> <code>{date}</code> <code>{absent}</code> <code>{present}</code>
+        </p>
+        <textarea id="notifyTemplate" rows="7"></textarea>
+        <div class="notify-template-actions">
+          <button class="btn btn-ghost btn-sm" id="notifyTemplateResetBtn">Reset to default</button>
+        </div>
+      </details>
+
+      <div class="notify-preview" id="notifyPreview"></div>
+
+      <div class="notify-list" id="notifyList"></div>
+      <div class="notify-empty" id="notifyEmpty" style="display:none">
+        No absentees for this day — nothing to send.
+      </div>
+
+      <div class="modal-actions notify-actions">
+        <button class="btn btn-ghost btn-sm" id="notifyCopyAllBtn">Copy all messages</button>
+        <button class="btn btn-ghost btn-sm" id="notifyDoneBtn">Done</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Active register bar (shown after load, replaces context card) -->
   <div class="register-bar" id="registerBar" style="display:none">
     <div class="register-bar-info" id="contextSummary"></div>
@@ -135,6 +224,11 @@
       <button class="btn btn-ghost btn-sm" id="downloadPdfBtn" disabled>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Export PDF
+      </button>
+      <button class="btn btn-ghost btn-sm btn-whatsapp" id="notifyBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.87 9.87 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.15h-.01a8.23 8.23 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.19 8.19 0 0 1-1.26-4.38c0-4.54 3.7-8.23 8.25-8.23 2.2 0 4.27.86 5.83 2.42a8.19 8.19 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.24 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.24-.64.8-.79.97-.14.16-.29.18-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.13-.15.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.42l-.47-.01c-.17 0-.43.06-.66.31-.22.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.47-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.15-1.18-.06-.11-.22-.17-.47-.29Z"/></svg>
+        Notify absentees
+        <svg id="notifyLockIcon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       </button>
       <button class="btn btn-ghost btn-sm" id="switchRegisterBtn">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
@@ -145,9 +239,14 @@
 
   <!-- Toolbar (add student + status) -->
   <div class="toolbar" id="toolbar" style="display:none">
-    <div class="add-student-form card">
+    <button class="btn btn-ghost" id="manageStudentsBtn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      Manage students
+    </button>
+    <div class="add-student-form card" id="addStudentForm" style="display:none">
       <input type="text" id="newStudentName" placeholder="Student name" />
       <input type="text" id="newStudentRoll" placeholder="Roll no (optional)" />
+      <input type="tel" id="newStudentPhone" placeholder="Parent WhatsApp (optional)" />
       <button class="btn btn-ghost" id="addStudentBtn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add student
@@ -165,12 +264,12 @@
     <div class="import-header">
       <div>
         <div class="import-title">Bulk import students</div>
-        <div class="import-hint">Paste CSV below or upload a file — one student per row, columns: <code>Name, Roll No</code> (roll no optional), or <code>S.No, Name, Roll No</code> — a leading serial number column is detected and stripped automatically. Header row is auto-detected.</div>
+        <div class="import-hint">Paste CSV below or upload a file — one student per row, columns: <code>Name, Roll No, Parent Phone</code> (roll no and phone optional), or <code>S.No, Name, Roll No, Parent Phone</code> — a leading serial number column is detected and stripped automatically. Header row is auto-detected.</div>
       </div>
       <button class="icon-btn" id="importCloseBtn" aria-label="Close">✕</button>
     </div>
     <div class="import-body">
-      <textarea id="importTextarea" placeholder="Aarav Mehta, ADCI-01&#10;Priya Nair, ADCI-02&#10;Rohan Iyer"></textarea>
+      <textarea id="importTextarea" placeholder="Aarav Mehta, ADCI-01, 9876543210&#10;Priya Nair, ADCI-02, +91 98765 43211&#10;Rohan Iyer, ADCI-03"></textarea>
       <div class="import-upload-row">
         <label class="btn btn-ghost btn-sm upload-label" for="importFileInput">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -204,7 +303,8 @@
   </div>
 
   <footer>
-    Tap a lecture chip to cycle: <strong>— → Present → Absent → —</strong>. Time is stamped automatically. Past dates are read-only.
+    Tap a lecture chip to cycle: <strong>— → Present → Absent → —</strong>. Time is stamped automatically. Past dates are read-only.<br />
+    Click a session chip in the summary bar to name it, then use <strong>Notify absentees</strong> to WhatsApp each parent one day-digest message.
   </footer>
 </div>
 

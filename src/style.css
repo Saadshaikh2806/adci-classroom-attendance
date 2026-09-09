@@ -873,3 +873,234 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* ── Session topics (named lectures/tests) ────────────────── */
+.lec-summary-chip {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 5px 12px;
+  font-family: inherit;
+  text-align: left;
+}
+
+button.lec-summary-chip {
+  cursor: pointer;
+  transition: border-color .13s, background .13s;
+}
+button.lec-summary-chip:hover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+button.lec-summary-chip.type-test:hover {
+  border-color: #d97706;
+  background: var(--warn-bg);
+}
+
+.lec-summary-top {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lec-summary-topic {
+  font-size: 11px;
+  color: var(--text-subtle);
+  font-weight: 500;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lec-summary-chip.has-topic .lec-summary-topic {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* ── Parent phone ─────────────────────────────────────────── */
+.student-phone-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-xs);
+  color: var(--text-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: background .13s, color .13s;
+}
+.student-phone-btn:hover { background: var(--primary-soft); color: var(--primary); }
+.student-phone-btn.has-phone { color: var(--present); }
+.student-phone-btn.has-phone:hover { background: var(--present-bg); }
+
+/* When the phone button takes the auto margin, delete shouldn't. */
+.student-phone-btn + .student-delete-btn { margin-left: 0; }
+
+.phone-preview { margin-top: -4px; font-size: 12.5px; }
+.phone-preview.bad { color: var(--absent); }
+
+.import-nophone-tag {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  white-space: nowrap;
+}
+
+/* ── WhatsApp notify ──────────────────────────────────────── */
+.btn-whatsapp {
+  color: #128c7e;
+  border-color: #a7d9d2;
+  background: #f0fbf9;
+}
+.btn-whatsapp:hover { background: #dff5f1; border-color: #128c7e; }
+
+.modal.modal-wide {
+  max-width: 620px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.notify-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.notify-header .modal-hint { margin-top: 2px; }
+
+.notify-template {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+.notify-template summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.notify-template .modal-hint { margin: 8px 0 6px; }
+.notify-template code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 0 4px;
+  font-size: 11.5px;
+}
+.notify-template textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+.notify-template textarea:focus { outline: none; border-color: var(--border-focus); }
+.notify-template-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+
+.notify-preview {
+  border: 1px solid var(--border);
+  border-left: 3px solid #128c7e;
+  border-radius: var(--radius-sm);
+  background: #f0fbf9;
+  padding: 10px 12px;
+}
+.notify-preview-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: #128c7e;
+  margin-bottom: 6px;
+}
+.notify-preview pre {
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.notify-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.notify-list { display: flex; flex-direction: column; gap: 8px; }
+
+.notify-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.notify-row .avatar { width: 32px; height: 32px; font-size: 12px; }
+.notify-row-main { flex: 1; min-width: 0; }
+.notify-row-sessions {
+  font-size: 11.5px;
+  color: var(--absent);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notify-row.no-phone { background: var(--surface-2); }
+.notify-row.no-phone .avatar { filter: grayscale(1); opacity: .7; }
+.notify-row.sent {
+  background: var(--present-bg);
+  border-color: var(--present-border);
+}
+.notify-row.sent .btn-whatsapp {
+  color: var(--present);
+  border-color: var(--present-border);
+  background: transparent;
+}
+
+.notify-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 20px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.notify-actions { justify-content: space-between; }
+
+@media (max-width: 640px) {
+  #newStudentPhone { width: 100%; }
+  .lec-summary-topic { max-width: 120px; }
+  .notify-row { flex-wrap: wrap; }
+  .notify-row-action { width: 100%; }
+  .notify-row-action .btn { width: 100%; justify-content: center; }
+}
+
+/* Locked state for the sender-gated notify button */
+#notifyLockIcon { opacity: .55; margin-left: -2px; }
+.modal #notifyGateInput {
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 3px;
+  font-size: 16px;
+  text-align: center;
+}
+
+.modal #adminGateInput {
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 3px;
+  font-size: 16px;
+  text-align: center;
+}

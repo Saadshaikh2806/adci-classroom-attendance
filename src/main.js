@@ -19,14 +19,35 @@
   const DEMO_CLASS   = 'Full Stack Development';
   const DEMO_BATCH   = 'Batch 2026-A';
   const DEMO_STUDENTS = [
-    { id: 'demo-1', name: 'Aarav Mehta',  roll_no: 'ADCI-01' },
-    { id: 'demo-2', name: 'Priya Nair',   roll_no: 'ADCI-02' },
-    { id: 'demo-3', name: 'Rohan Iyer',   roll_no: 'ADCI-03' },
+    { id: 'demo-1', name: 'Aarav Mehta',  roll_no: 'ADCI-01', parent_phone: '919876543210' },
+    { id: 'demo-2', name: 'Priya Nair',   roll_no: 'ADCI-02', parent_phone: '919876543211' },
+    { id: 'demo-3', name: 'Rohan Iyer',   roll_no: 'ADCI-03', parent_phone: null },
   ];
 
-  const LS_CLASS = 'adci_class';
-  const LS_BATCH = 'adci_batch';
-  const LS_CODE  = 'adci_code';
+  const LS_CLASS    = 'adci_class';
+  const LS_BATCH    = 'adci_batch';
+  const LS_CODE     = 'adci_code';
+  const LS_TEMPLATE = 'adci_wa_template';
+
+  // Attendance takers and the person who messages parents are different
+  // people, so notifying is gated behind its own passcode. Note this is
+  // client-side deterrence only, in line with the other passcodes here.
+  const NOTIFY_PASSCODE = '0002';
+
+  // Bare 10-digit numbers are assumed to be Indian mobiles.
+  const DEFAULT_COUNTRY_CODE = '91';
+
+  const DEFAULT_TEMPLATE =
+`Dear Parent,
+
+This is to inform you that {name} ({roll}) was marked ABSENT for the following session(s) on {date}:
+
+{absent}
+
+Class: {class} · {batch}
+
+Kindly ensure regular attendance.
+— ADCI`;
 
   const CLASS_COLORS = [
     '#6366f1', '#0ea5e9', '#f59e0b', '#ef4444',
@@ -47,6 +68,7 @@
   let contextLoaded  = false;
   let classesList    = [];
   let pendingClass    = null;
+  let sessionTitles  = {};  // `${type}__${number}` → topic
 
   // ── Helpers ────────────────────────────────────────────────────────────
   const pad = n => String(n).padStart(2, '0');
@@ -89,6 +111,37 @@
 
   function sessionKey(studentId, type, number) { return `${studentId}__${type}__${number}`; }
   function sessionLabel(type, number) { return `${type === 'Test' ? 'T' : 'L'}${number}`; }
+
+  // ── Session titles ─────────────────────────────────────────────────────
+  function titleKey(type, number) { return `${type}__${number}`; }
+  function sessionTitleOf(type, number) { return sessionTitles[titleKey(type, number)] || ''; }
+
+  // "Lecture 1 — Java Basics", or just "Lecture 1" when untitled.
+  function sessionFullLabel(type, number) {
+    const t = sessionTitleOf(type, number);
+    return `${type} ${number}${t ? ` — ${t}` : ''}`;
+  }
+
+  // ── Phone numbers ──────────────────────────────────────────────────────
+  // Returns a digits-only international number suitable for wa.me, or ''.
+  function normalizePhone(raw) {
+    if (!raw) return '';
+    const hadPlus = String(raw).trim().startsWith('+');
+    let digits = String(raw).replace(/\D/g, '');
+    if (!digits) return '';
+    if (!hadPlus) {
+      // Strip a national trunk prefix, then add the country code if it's a
+      // bare local number.
+      if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+      if (digits.length === 10) digits = DEFAULT_COUNTRY_CODE + digits;
+    }
+    return digits.length >= 10 && digits.length <= 15 ? digits : '';
+  }
+
+  function displayPhone(stored) {
+    const n = normalizePhone(stored);
+    return n ? `+${n}` : '';
+  }
 
   // ── Clock ──────────────────────────────────────────────────────────────
   function tickClock() {
@@ -142,7 +195,65 @@
   });
 
   // ── Classes (cards + passcode) ────────────────────────────────────────
-  const NEW_CLASS_PASSCODE = '0001';
+  // Admin passcode. Gates everything that writes student data — creating
+  // classes, adding/importing/deleting students, and parent phone numbers —
+  // so an attendance taker can only mark attendance.
+  const ADMIN_PASSCODE = '0001';
+
+  // In memory only, like the sender unlock: dropped on refresh and whenever
+  // the register or date changes.
+  let adminUnlocked = false;
+  let adminGateResolve = null;
+
+  function openAdminGate(hint) {
+    return new Promise(resolve => {
+      adminGateResolve = resolve;
+      document.getElementById('adminGateHint').textContent = hint;
+      document.getElementById('adminGateInput').value = '';
+      document.getElementById('adminGateError').textContent = '';
+      document.getElementById('adminGateModal').style.display = 'flex';
+      document.getElementById('adminGateInput').focus();
+    });
+  }
+
+  function closeAdminGate(result) {
+    document.getElementById('adminGateModal').style.display = 'none';
+    if (adminGateResolve) { adminGateResolve(result); adminGateResolve = null; }
+  }
+
+  function onAdminGateSubmit() {
+    const entered = document.getElementById('adminGateInput').value.trim();
+    if (entered !== ADMIN_PASSCODE) {
+      document.getElementById('adminGateError').textContent = 'Incorrect passcode — try again.';
+      return;
+    }
+    adminUnlocked = true;
+    applyRoleVisibility();
+    closeAdminGate(true);
+  }
+
+  // Resolves true once the admin passcode has been given in this tab.
+  async function requireAdmin(hint) {
+    if (adminUnlocked) return true;
+    return openAdminGate(hint);
+  }
+
+  function lockAdmin() {
+    adminUnlocked = false;
+    applyRoleVisibility();
+  }
+
+  // Show or hide every data-entry control according to the current role.
+  function applyRoleVisibility() {
+    document.getElementById('manageStudentsBtn').style.display = adminUnlocked ? 'none' : 'inline-flex';
+    document.getElementById('addStudentForm').style.display    = adminUnlocked ? 'flex' : 'none';
+    if (!adminUnlocked) {
+      document.getElementById('importPanel').style.display = 'none';
+      closePhoneModal();
+    }
+    // Phone and delete buttons live on the student cards.
+    if (contextLoaded) renderStudentCards();
+  }
 
   function generateCode() {
     return String(Math.floor(100000 + Math.random() * 900000));
@@ -254,6 +365,11 @@
   }
 
   async function enterRegister(className, batchName, date, code) {
+    // Both roles are re-gated whenever the register or date changes. Clearing
+    // contextLoaded first stops the re-render firing against the old class.
+    contextLoaded = false;
+    lockNotify();
+    lockAdmin();
     currentClass = className; currentBatch = batchName; viewDate = date; contextLoaded = true;
 
     try {
@@ -265,6 +381,7 @@
     setStatus('Loading…', false);
     await loadStudents();
     await loadAttendance();
+    await loadSessionTitles();
 
     document.getElementById('classesCard').style.display = 'none';
     document.getElementById('contextCard').style.display = 'none';
@@ -322,6 +439,44 @@
     testCount = maxTest;
   }
 
+  async function loadSessionTitles() {
+    sessionTitles = {};
+    if (!sb) return;
+    const { data, error } = await sb.from('sessions1')
+      .select('session_type,session_number,title')
+      .eq('class_name', currentClass)
+      .eq('batch_name', currentBatch)
+      .eq('attendance_date', viewDate);
+    // A missing sessions1 table shouldn't break the register — titles are optional.
+    if (error) return;
+    (data || []).forEach(r => {
+      sessionTitles[titleKey(r.session_type || 'Lecture', r.session_number)] = r.title;
+    });
+  }
+
+  async function saveSessionTitle(type, number, title) {
+    const key = titleKey(type, number);
+    if (title) sessionTitles[key] = title; else delete sessionTitles[key];
+    if (!sb) return;
+    if (!title) {
+      const { error } = await sb.from('sessions1').delete()
+        .eq('class_name', currentClass).eq('batch_name', currentBatch)
+        .eq('attendance_date', viewDate)
+        .eq('session_type', type).eq('session_number', number);
+      if (error) throw error;
+      return;
+    }
+    const { error } = await sb.from('sessions1').upsert({
+      class_name:      currentClass,
+      batch_name:      currentBatch,
+      attendance_date: viewDate,
+      session_type:    type,
+      session_number:  number,
+      title,
+    }, { onConflict: 'class_name,batch_name,attendance_date,session_type,session_number' });
+    if (error) throw error;
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────
   function allSessions() {
     const sessions = [];
@@ -334,13 +489,25 @@
     const bar = document.getElementById('lectureSummaryBar');
     bar.innerHTML = '';
 
+    const editable = isToday();
+
     allSessions().forEach(({ type, number }) => {
       const present = students.filter(s => attendanceState[sessionKey(s.id, type, number)]?.status === 'Present').length;
-      const chip = document.createElement('div');
-      chip.className = 'lec-summary-chip' + (type === 'Test' ? ' type-test' : '');
+      const topic   = sessionTitleOf(type, number);
+
+      const chip = document.createElement(editable ? 'button' : 'div');
+      chip.className = 'lec-summary-chip' + (type === 'Test' ? ' type-test' : '') + (topic ? ' has-topic' : '');
+      if (editable) {
+        chip.type  = 'button';
+        chip.title = topic ? 'Rename this session' : 'Name this session';
+      }
       chip.innerHTML =
-        `<span class="lec-summary-label">${sessionLabel(type, number)}</span>` +
-        `<span class="lec-summary-stat">${present}/${students.length}</span>`;
+        `<span class="lec-summary-top">` +
+          `<span class="lec-summary-label">${sessionLabel(type, number)}</span>` +
+          `<span class="lec-summary-stat">${present}/${students.length}</span>` +
+        `</span>` +
+        `<span class="lec-summary-topic">${topic ? escapeHtml(topic) : (editable ? '+ name it' : 'Untitled')}</span>`;
+      if (editable) chip.addEventListener('click', () => openSessionNameModal(type, number));
       bar.appendChild(chip);
     });
 
@@ -368,8 +535,9 @@
 
     if (!students.length) {
       empty.style.display = 'flex';
-      document.getElementById('emptyText').textContent =
-        `No students yet in ${currentClass} · ${currentBatch} — add the first one above.`;
+      document.getElementById('emptyText').textContent = adminUnlocked
+        ? `No students yet in ${currentClass} · ${currentBatch} — add the first one above.`
+        : `No students yet in ${currentClass} · ${currentBatch} — an admin can add them via "Manage students".`;
       return;
     }
     empty.style.display = 'none';
@@ -389,9 +557,15 @@
           </div>
         </div>
         <div class="lec-chips" data-student-id="${s.id}"></div>
+        ${adminUnlocked ? `
+        <button class="student-phone-btn${normalizePhone(s.parent_phone) ? ' has-phone' : ''}" type="button"
+                title="${normalizePhone(s.parent_phone) ? `Parent: ${displayPhone(s.parent_phone)}` : 'Add parent WhatsApp number'}"
+                aria-label="Parent number for ${escapeHtml(s.name)}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>
+        </button>
         <button class="student-delete-btn" type="button" title="Delete student" aria-label="Delete ${escapeHtml(s.name)}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-        </button>`;
+        </button>` : ''}`;
 
       const chips = card.querySelector('.lec-chips');
       allSessions().forEach(({ type, number }) => {
@@ -406,13 +580,17 @@
         chips.appendChild(btn);
       });
 
-      card.querySelector('.student-delete-btn').addEventListener('click', () => onDeleteStudent(s));
+      if (adminUnlocked) {
+        card.querySelector('.student-phone-btn').addEventListener('click', () => openPhoneModal(s));
+        card.querySelector('.student-delete-btn').addEventListener('click', () => onDeleteStudent(s));
+      }
 
       list.appendChild(card);
     });
   }
 
   async function onDeleteStudent(s) {
+    if (!adminUnlocked) return;
     const ok = await showDialog({
       title: 'Delete student?',
       html: `Delete <strong>${escapeHtml(s.name)}</strong> from this class? This also removes their attendance records.`,
@@ -433,6 +611,64 @@
       refreshOptions();
     } catch (err) {
       setStatus('Could not delete student: ' + err.message, true);
+    }
+  }
+
+  // ── Parent phone editing ───────────────────────────────────────────────
+  let pendingPhoneStudent = null;
+
+  function openPhoneModal(s) {
+    if (!adminUnlocked) return;
+    pendingPhoneStudent = s;
+    document.getElementById('phoneModalTitle').textContent = `Parent number — ${s.name}`;
+    const input = document.getElementById('phoneInput');
+    input.value = s.parent_phone ? displayPhone(s.parent_phone) : '';
+    document.getElementById('phoneError').textContent = '';
+    updatePhonePreview();
+    document.getElementById('phoneModal').style.display = 'flex';
+    input.focus();
+    input.select();
+  }
+
+  function closePhoneModal() {
+    pendingPhoneStudent = null;
+    document.getElementById('phoneModal').style.display = 'none';
+  }
+
+  function updatePhonePreview() {
+    const raw = document.getElementById('phoneInput').value.trim();
+    const el  = document.getElementById('phonePreview');
+    if (!raw)      { el.textContent = 'Leave blank to remove the saved number.'; el.classList.remove('bad'); return; }
+    const n = normalizePhone(raw);
+    el.textContent = n ? `Will be saved as +${n}` : 'That doesn’t look like a valid number.';
+    el.classList.toggle('bad', !n);
+  }
+
+  async function onPhoneSave() {
+    if (!adminUnlocked || !pendingPhoneStudent) return;
+    const s   = pendingPhoneStudent;
+    const raw = document.getElementById('phoneInput').value.trim();
+    const normalized = raw ? normalizePhone(raw) : '';
+    if (raw && !normalized) {
+      document.getElementById('phoneError').textContent = 'Enter a valid number, or clear the field to remove it.';
+      return;
+    }
+    const btn = document.getElementById('phoneSaveBtn');
+    btn.disabled = true;
+    try {
+      if (sb) {
+        const { error } = await sb.from('students1')
+          .update({ parent_phone: normalized || null }).eq('id', s.id);
+        if (error) throw error;
+      }
+      s.parent_phone = normalized || null;
+      closePhoneModal();
+      renderStudentCards();
+      setStatus(normalized ? `Parent number saved for ${s.name}.` : `Parent number removed for ${s.name}.`, false);
+    } catch (err) {
+      document.getElementById('phoneError').textContent = 'Could not save: ' + err.message;
+    } finally {
+      btn.disabled = false;
     }
   }
 
@@ -539,28 +775,35 @@
 
   // ── Add student ────────────────────────────────────────────────────────
   async function onAddStudent() {
+    if (!adminUnlocked) return;
     if (!contextLoaded) { setStatus('Load a class and batch first.', true); return; }
-    const nameEl = document.getElementById('newStudentName');
-    const rollEl = document.getElementById('newStudentRoll');
-    const name   = nameEl.value.trim();
-    const roll   = rollEl.value.trim();
+    const nameEl  = document.getElementById('newStudentName');
+    const rollEl  = document.getElementById('newStudentRoll');
+    const phoneEl = document.getElementById('newStudentPhone');
+    const name    = nameEl.value.trim();
+    const roll    = rollEl.value.trim();
+    const rawPhone = phoneEl.value.trim();
     if (!name) { setStatus('Enter a student name first.', true); return; }
+    const phone = rawPhone ? normalizePhone(rawPhone) : '';
+    if (rawPhone && !phone) { setStatus('That parent number doesn’t look valid.', true); return; }
 
     const btn = document.getElementById('addStudentBtn');
     btn.disabled = true;
     try {
       if (sb) {
         const { data, error } = await sb.from('students1').insert({
-          name, roll_no: roll || null, class_name: currentClass, batch_name: currentBatch
+          name, roll_no: roll || null, parent_phone: phone || null,
+          class_name: currentClass, batch_name: currentBatch
         }).select().single();
         if (error) throw error;
         students.push(data);
       } else {
-        students.push({ id: `demo-${Date.now()}`, name, roll_no: roll || null });
+        students.push({ id: `demo-${Date.now()}`, name, roll_no: roll || null, parent_phone: phone || null });
       }
       sortStudents(students);
-      nameEl.value = '';
-      rollEl.value = '';
+      nameEl.value  = '';
+      rollEl.value  = '';
+      phoneEl.value = '';
       setStatus(`${name} added.`, false);
       renderAll();
       refreshOptions();
@@ -577,8 +820,48 @@
     // Auto-mark all unmarked students in the current session as Absent
     if (currentNumber > 0) await autoAbsentSession(type, currentNumber);
     if (type === 'Test') testCount += 1; else lectureCount += 1;
+    const number = type === 'Test' ? testCount : lectureCount;
     renderAll();
-    setStatus(`${sessionLabel(type, type === 'Test' ? testCount : lectureCount)} added.`, false);
+    setStatus(`${sessionLabel(type, number)} added.`, false);
+    openSessionNameModal(type, number);
+  }
+
+  // ── Session naming ─────────────────────────────────────────────────────
+  let pendingSession = null;
+
+  function openSessionNameModal(type, number) {
+    if (!isToday()) return;
+    pendingSession = { type, number };
+    document.getElementById('sessionNameTitle').textContent = `Name ${type.toLowerCase()} ${number}`;
+    const input = document.getElementById('sessionNameInput');
+    input.value = sessionTitleOf(type, number);
+    document.getElementById('sessionNameError').textContent = '';
+    document.getElementById('sessionNameModal').style.display = 'flex';
+    input.focus();
+    input.select();
+  }
+
+  function closeSessionNameModal() {
+    pendingSession = null;
+    document.getElementById('sessionNameModal').style.display = 'none';
+  }
+
+  async function onSessionNameSave() {
+    if (!pendingSession) return;
+    const { type, number } = pendingSession;
+    const title = document.getElementById('sessionNameInput').value.trim();
+    const btn = document.getElementById('sessionNameSaveBtn');
+    btn.disabled = true;
+    try {
+      await saveSessionTitle(type, number, title);
+      closeSessionNameModal();
+      renderLectureSummary();
+      setStatus(title ? `${sessionLabel(type, number)} named "${title}".` : 'Session name cleared.', false);
+    } catch (err) {
+      document.getElementById('sessionNameError').textContent = 'Could not save: ' + err.message;
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   async function autoAbsentSession(type, number) {
@@ -647,6 +930,225 @@
     if (msg) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
   }
 
+  // ── WhatsApp absentee notifications ────────────────────────────────────
+  // One digest message per student covering every session they missed that
+  // day, opened as a pre-filled wa.me chat. wa.me cannot auto-send: the
+  // teacher presses send in WhatsApp, so this is one tap per parent.
+  const notifySent = new Set();
+
+  // Held in memory only: unlocking lasts for this tab, and is dropped on
+  // refresh or when switching registers so a shared machine doesn't stay open.
+  let notifyUnlocked = false;
+
+  function updateNotifyBtn() {
+    const lock = document.getElementById('notifyLockIcon');
+    const btn  = document.getElementById('notifyBtn');
+    lock.style.display = notifyUnlocked ? 'none' : '';
+    btn.title = notifyUnlocked
+      ? 'Send absence messages to parents'
+      : 'Restricted — requires the sender passcode';
+  }
+
+  function lockNotify() {
+    notifyUnlocked = false;
+    notifySent.clear();
+    updateNotifyBtn();
+  }
+
+  function openNotifyGate() {
+    document.getElementById('notifyGateInput').value = '';
+    document.getElementById('notifyGateError').textContent = '';
+    document.getElementById('notifyGateModal').style.display = 'flex';
+    document.getElementById('notifyGateInput').focus();
+  }
+
+  function closeNotifyGate() {
+    document.getElementById('notifyGateModal').style.display = 'none';
+  }
+
+  function onNotifyGateSubmit() {
+    const entered = document.getElementById('notifyGateInput').value.trim();
+    if (entered !== NOTIFY_PASSCODE) {
+      document.getElementById('notifyGateError').textContent = 'Incorrect passcode — try again.';
+      return;
+    }
+    notifyUnlocked = true;
+    updateNotifyBtn();
+    closeNotifyGate();
+    openNotifyModal();
+  }
+
+  // Entry point for the button: gate first, then show the list.
+  function onNotifyClick() {
+    if (!contextLoaded) { setStatus('Open a class first.', true); return; }
+    if (!notifyUnlocked) { openNotifyGate(); return; }
+    openNotifyModal();
+  }
+
+  function getTemplate() {
+    try { return localStorage.getItem(LS_TEMPLATE) || DEFAULT_TEMPLATE; }
+    catch (_) { return DEFAULT_TEMPLATE; }
+  }
+
+  function setTemplate(tpl) {
+    try {
+      if (tpl && tpl !== DEFAULT_TEMPLATE) localStorage.setItem(LS_TEMPLATE, tpl);
+      else localStorage.removeItem(LS_TEMPLATE);
+    } catch (_) {}
+  }
+
+  function fillTemplate(tpl, ctx) {
+    // Drop "({roll})" wholesale when the student has no roll number, so the
+    // message never reads "Aarav Mehta ()".
+    let out = ctx.roll ? tpl : tpl.replace(/[ \t]*\(\{roll\}\)/g, '');
+    return out.replace(/\{(\w+)\}/g, (m, k) => (k in ctx ? ctx[k] : m));
+  }
+
+  // Every student with at least one Absent mark today, with their session lists.
+  function buildDigests(tplOverride) {
+    const sessions = allSessions();
+    const tpl = tplOverride || getTemplate();
+    const digests = [];
+
+    students.forEach(s => {
+      const absent = [], present = [];
+      sessions.forEach(({ type, number }) => {
+        const st = attendanceState[sessionKey(s.id, type, number)];
+        if (!st) return;
+        (st.status === 'Absent' ? absent : present).push(sessionFullLabel(type, number));
+      });
+      if (!absent.length) return;
+
+      const message = fillTemplate(tpl, {
+        name:    s.name,
+        roll:    s.roll_no || '',
+        class:   currentClass,
+        batch:   currentBatch,
+        date:    formatDateLong(viewDate),
+        absent:  absent.map(l => `• ${l}`).join('\n'),
+        present: present.length ? present.join(', ') : 'None',
+      });
+
+      digests.push({ student: s, phone: normalizePhone(s.parent_phone), absent, present, message });
+    });
+
+    return digests;
+  }
+
+  function renderNotifyList() {
+    // Preview against exactly what's in the box, so an in-progress edit is
+    // what you see; an emptied box falls back to the default.
+    const digests = buildDigests(document.getElementById('notifyTemplate').value.trim());
+    const list    = document.getElementById('notifyList');
+    const empty   = document.getElementById('notifyEmpty');
+    const preview = document.getElementById('notifyPreview');
+    list.innerHTML = '';
+
+    document.getElementById('notifySubtitle').textContent =
+      `${currentClass} · ${currentBatch} · ${formatDateLong(viewDate)}`;
+
+    if (!digests.length) {
+      empty.style.display = 'block';
+      preview.style.display = 'none';
+      document.getElementById('notifyCopyAllBtn').style.display = 'none';
+      return;
+    }
+    empty.style.display = 'none';
+    document.getElementById('notifyCopyAllBtn').style.display = 'inline-flex';
+
+    preview.style.display = 'block';
+    preview.innerHTML =
+      `<div class="notify-preview-label">Preview — ${escapeHtml(digests[0].student.name)}</div>` +
+      `<pre>${escapeHtml(digests[0].message)}</pre>`;
+
+    const withPhone = digests.filter(d => d.phone).length;
+    const noPhone   = digests.length - withPhone;
+
+    const head = document.createElement('div');
+    head.className = 'notify-count';
+    head.textContent =
+      `${digests.length} absentee${digests.length > 1 ? 's' : ''}` +
+      ` · ${withPhone} with a saved number` +
+      (noPhone ? ` · ${noPhone} missing a number` : '');
+    list.appendChild(head);
+
+    digests.forEach(d => {
+      const row = document.createElement('div');
+      row.className = 'notify-row' + (d.phone ? '' : ' no-phone') +
+        (notifySent.has(d.student.id) ? ' sent' : '');
+      row.innerHTML = `
+        <div class="avatar">${initials(d.student.name)}</div>
+        <div class="notify-row-main">
+          <div class="student-name">${escapeHtml(d.student.name)}</div>
+          <div class="student-roll">
+            ${d.student.roll_no ? escapeHtml(d.student.roll_no) + ' · ' : ''}
+            ${d.phone ? escapeHtml('+' + d.phone) : 'No parent number saved'}
+          </div>
+          <div class="notify-row-sessions">Absent: ${escapeHtml(d.absent.join(', '))}</div>
+        </div>
+        <div class="notify-row-action"></div>`;
+
+      const action = row.querySelector('.notify-row-action');
+      if (d.phone) {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-whatsapp btn-sm';
+        btn.type = 'button';
+        btn.textContent = notifySent.has(d.student.id) ? 'Sent ✓' : 'Send';
+        btn.addEventListener('click', () => {
+          const url = `https://wa.me/${d.phone}?text=${encodeURIComponent(d.message)}`;
+          const win = window.open(url, '_blank', 'noopener');
+          if (!win) { setStatus('Pop-up blocked — allow pop-ups for this site to open WhatsApp.', true); return; }
+          notifySent.add(d.student.id);
+          btn.textContent = 'Sent ✓';
+          row.classList.add('sent');
+        });
+        action.appendChild(btn);
+      } else {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-ghost btn-sm';
+        btn.type = 'button';
+        btn.textContent = 'Add number';
+        // Saving a number is data entry, so it needs the admin passcode even
+        // though the sender is already unlocked.
+        btn.addEventListener('click', async () => {
+          const ok = await requireAdmin('Enter the admin passcode to save a parent number.');
+          if (!ok) return;
+          closeNotifyModal();
+          openPhoneModal(d.student);
+        });
+        action.appendChild(btn);
+      }
+
+      list.appendChild(row);
+    });
+  }
+
+  function openNotifyModal() {
+    if (!contextLoaded) { setStatus('Open a class first.', true); return; }
+    if (!notifyUnlocked) { openNotifyGate(); return; }
+    document.getElementById('notifyTemplate').value = getTemplate();
+    renderNotifyList();
+    document.getElementById('notifyModal').style.display = 'flex';
+  }
+
+  function closeNotifyModal() {
+    document.getElementById('notifyModal').style.display = 'none';
+  }
+
+  async function onNotifyCopyAll() {
+    const digests = buildDigests();
+    if (!digests.length) return;
+    const text = digests
+      .map(d => `${d.student.name}${d.phone ? ` (+${d.phone})` : ' (no number)'}\n${d.message}`)
+      .join('\n\n———\n\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus(`${digests.length} message${digests.length > 1 ? 's' : ''} copied to clipboard.`, false);
+    } catch (_) {
+      setStatus('Could not access the clipboard — copy from the preview instead.', true);
+    }
+  }
+
   // ── PDF export ─────────────────────────────────────────────────────────
   function downloadPdf() {
     if (!contextLoaded) { setStatus('Load a class and batch first.', true); return; }
@@ -665,7 +1167,7 @@
     doc.text(`Class: ${currentClass}   |   Batch: ${currentBatch}   |   Date: ${formatDateLong(viewDate)}`, 14, 24);
 
     const sessions = allSessions();
-    const sessionHeaders = sessions.map(({ type, number }) => `${type} ${number}`);
+    const sessionHeaders = sessions.map(({ type, number }) => sessionFullLabel(type, number));
     const head = [['#', 'Name', 'Roll No', ...sessionHeaders]];
     const body = students.map((s, idx) => {
       const row = [idx + 1, s.name, s.roll_no || '-'];
@@ -694,35 +1196,75 @@
   document.getElementById('downloadPdfBtn').addEventListener('click', downloadPdf);
   document.getElementById('newStudentName').addEventListener('keydown', e => e.key === 'Enter' && onAddStudent());
   document.getElementById('newStudentRoll').addEventListener('keydown', e => e.key === 'Enter' && onAddStudent());
+  document.getElementById('newStudentPhone').addEventListener('keydown', e => e.key === 'Enter' && onAddStudent());
+
+  // Session naming
+  document.getElementById('sessionNameSaveBtn').addEventListener('click', onSessionNameSave);
+  document.getElementById('sessionNameCancelBtn').addEventListener('click', closeSessionNameModal);
+  document.getElementById('sessionNameInput').addEventListener('keydown', e => e.key === 'Enter' && onSessionNameSave());
+  document.getElementById('sessionNameModal').addEventListener('click', e => {
+    if (e.target.id === 'sessionNameModal') closeSessionNameModal();
+  });
+
+  // Parent phone
+  document.getElementById('phoneSaveBtn').addEventListener('click', onPhoneSave);
+  document.getElementById('phoneCancelBtn').addEventListener('click', closePhoneModal);
+  document.getElementById('phoneInput').addEventListener('input', updatePhonePreview);
+  document.getElementById('phoneInput').addEventListener('keydown', e => e.key === 'Enter' && onPhoneSave());
+  document.getElementById('phoneModal').addEventListener('click', e => {
+    if (e.target.id === 'phoneModal') closePhoneModal();
+  });
+
+  // Notify absentees (sender-gated)
+  document.getElementById('notifyBtn').addEventListener('click', onNotifyClick);
+  document.getElementById('notifyGateSubmitBtn').addEventListener('click', onNotifyGateSubmit);
+  document.getElementById('notifyGateCancelBtn').addEventListener('click', closeNotifyGate);
+  document.getElementById('notifyGateInput').addEventListener('keydown', e => e.key === 'Enter' && onNotifyGateSubmit());
+  document.getElementById('notifyGateModal').addEventListener('click', e => {
+    if (e.target.id === 'notifyGateModal') closeNotifyGate();
+  });
+  document.getElementById('notifyCloseBtn').addEventListener('click', closeNotifyModal);
+  document.getElementById('notifyDoneBtn').addEventListener('click', closeNotifyModal);
+  document.getElementById('notifyCopyAllBtn').addEventListener('click', onNotifyCopyAll);
+  document.getElementById('notifyModal').addEventListener('click', e => {
+    if (e.target.id === 'notifyModal') closeNotifyModal();
+  });
+  document.getElementById('notifyTemplate').addEventListener('input', e => {
+    setTemplate(e.target.value);
+    renderNotifyList();
+  });
+  document.getElementById('notifyTemplateResetBtn').addEventListener('click', () => {
+    setTemplate('');
+    document.getElementById('notifyTemplate').value = DEFAULT_TEMPLATE;
+    renderNotifyList();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    closeSessionNameModal();
+    closePhoneModal();
+    closeNotifyModal();
+    closeNotifyGate();
+    if (document.getElementById('adminGateModal').style.display === 'flex') closeAdminGate(false);
+  });
   document.getElementById('classInput').addEventListener('keydown', e => e.key === 'Enter' && onLoadContext());
   document.getElementById('batchInput').addEventListener('keydown', e => e.key === 'Enter' && onLoadContext());
 
-  function openNewClassGate() {
-    document.getElementById('newClassGateInput').value = '';
-    document.getElementById('newClassGateError').textContent = '';
-    document.getElementById('newClassGateModal').style.display = 'flex';
-    document.getElementById('newClassGateInput').focus();
-  }
-  function closeNewClassGate() {
-    document.getElementById('newClassGateModal').style.display = 'none';
-  }
-  function onNewClassGateSubmit() {
-    const entered = document.getElementById('newClassGateInput').value.trim();
-    if (entered !== NEW_CLASS_PASSCODE) {
-      document.getElementById('newClassGateError').textContent = 'Incorrect passcode — try again.';
-      return;
-    }
-    closeNewClassGate();
+  document.getElementById('newClassBtn').addEventListener('click', async () => {
+    const ok = await requireAdmin('Enter the admin passcode to create a new class.');
+    if (!ok) return;
     document.getElementById('contextCard').style.display = 'block';
     document.getElementById('classInput').focus();
-  }
+  });
 
-  document.getElementById('newClassBtn').addEventListener('click', openNewClassGate);
-  document.getElementById('newClassGateSubmitBtn').addEventListener('click', onNewClassGateSubmit);
-  document.getElementById('newClassGateCancelBtn').addEventListener('click', closeNewClassGate);
-  document.getElementById('newClassGateInput').addEventListener('keydown', e => e.key === 'Enter' && onNewClassGateSubmit());
-  document.getElementById('newClassGateModal').addEventListener('click', e => {
-    if (e.target.id === 'newClassGateModal') closeNewClassGate();
+  document.getElementById('adminGateSubmitBtn').addEventListener('click', onAdminGateSubmit);
+  document.getElementById('adminGateCancelBtn').addEventListener('click', () => closeAdminGate(false));
+  document.getElementById('adminGateInput').addEventListener('keydown', e => e.key === 'Enter' && onAdminGateSubmit());
+  document.getElementById('adminGateModal').addEventListener('click', e => {
+    if (e.target.id === 'adminGateModal') closeAdminGate(false);
+  });
+  document.getElementById('manageStudentsBtn').addEventListener('click', () => {
+    requireAdmin('Enter the admin passcode to add, import or edit students.');
   });
   document.getElementById('cancelNewClassBtn').addEventListener('click', () => {
     document.getElementById('contextCard').style.display = 'none';
@@ -779,7 +1321,8 @@
         }
         const name = parts[0] || '';
         const roll = parts[1] || '';
-        return { name, roll };
+        const phone = normalizePhone(parts[2] || '');
+        return { name, roll, phone };
       })
       .filter(r => r.name &&
         !/^name$/i.test(r.name) &&
@@ -812,9 +1355,10 @@
         <div class="avatar">${initials(r.name)}</div>
         <div>
           <div class="student-name">${escapeHtml(r.name)}</div>
-          ${r.roll ? `<div class="student-roll">${escapeHtml(r.roll)}</div>` : ''}
+          <div class="student-roll">${[r.roll, r.phone ? `+${r.phone}` : ''].filter(Boolean).map(escapeHtml).join(' · ')}</div>
         </div>
-        ${isDupe ? '<span class="import-dupe-tag">already exists</span>' : ''}`;
+        ${isDupe ? '<span class="import-dupe-tag">already exists</span>'
+                 : (!r.phone ? '<span class="import-nophone-tag">no phone</span>' : '')}`;
       preview.appendChild(row);
     });
 
@@ -825,13 +1369,13 @@
   }
 
   async function onImportConfirm() {
-    if (!importRows.length) return;
+    if (!adminUnlocked || !importRows.length) return;
     const btn = document.getElementById('importConfirmBtn');
     btn.disabled = true;
     try {
       if (sb) {
         const records = importRows.map(r => ({
-          name: r.name, roll_no: r.roll || null,
+          name: r.name, roll_no: r.roll || null, parent_phone: r.phone || null,
           class_name: currentClass, batch_name: currentBatch,
         }));
         const { data, error } = await sb.from('students1').insert(records).select();
@@ -839,7 +1383,7 @@
         students.push(...(data || []));
       } else {
         importRows.forEach(r => {
-          students.push({ id: `demo-${Date.now()}-${Math.random()}`, name: r.name, roll_no: r.roll || null });
+          students.push({ id: `demo-${Date.now()}-${Math.random()}`, name: r.name, roll_no: r.roll || null, parent_phone: r.phone || null });
         });
       }
       sortStudents(students);
