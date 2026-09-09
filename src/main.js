@@ -354,7 +354,10 @@ Kindly ensure regular attendance.
   async function onPasscodeSubmit() {
     if (!pendingClass) return;
     const entered = document.getElementById('passcodeInput').value.trim();
-    if (entered !== String(pendingClass.code)) {
+    // The admin passcode is a master key: it opens any class without needing
+    // that class's own code.
+    const viaAdmin = entered === ADMIN_PASSCODE;
+    if (!viaAdmin && entered !== String(pendingClass.code)) {
       document.getElementById('passcodeError').textContent = 'Incorrect passcode — try again.';
       return;
     }
@@ -362,6 +365,13 @@ Kindly ensure regular attendance.
     const { class_name, batch_name, code } = pendingClass;
     closePasscodeModal();
     await enterRegister(class_name, batch_name, d, code);
+    // enterRegister re-locks both roles, so grant admin after it: whoever
+    // just typed the admin passcode shouldn't be asked for it again.
+    if (viaAdmin) {
+      adminUnlocked = true;
+      applyRoleVisibility();
+      setStatus('Opened as admin — student management is unlocked.', false);
+    }
   }
 
   async function enterRegister(className, batchName, date, code) {
