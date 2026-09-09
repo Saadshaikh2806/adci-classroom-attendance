@@ -162,20 +162,28 @@
     </div>
   </div>
 
-  <!-- Parent phone editor -->
-  <div class="modal-overlay" id="phoneModal" style="display:none">
+  <!-- Edit student (name, roll no, parent number) -->
+  <div class="modal-overlay" id="editStudentModal" style="display:none">
     <div class="modal card">
-      <div class="modal-title" id="phoneModalTitle">Parent WhatsApp number</div>
-      <p class="modal-hint">Used to send absence notices. Include the country code, or enter a 10-digit number and <strong>+91</strong> is assumed.</p>
+      <div class="modal-title" id="editStudentTitle">Edit student</div>
+      <p class="modal-hint">Attendance already recorded for this student is kept.</p>
       <div class="field-group">
-        <label for="phoneInput">Number</label>
-        <input type="tel" id="phoneInput" placeholder="e.g. 98765 43210" autocomplete="off" />
+        <label for="editNameInput">Name</label>
+        <input type="text" id="editNameInput" placeholder="Student name" autocomplete="off" />
       </div>
-      <div class="modal-hint phone-preview" id="phonePreview"></div>
-      <div class="modal-error" id="phoneError"></div>
+      <div class="field-group">
+        <label for="editRollInput">Roll no</label>
+        <input type="text" id="editRollInput" placeholder="Optional" autocomplete="off" />
+      </div>
+      <div class="field-group">
+        <label for="editPhoneInput">Parent WhatsApp</label>
+        <input type="tel" id="editPhoneInput" placeholder="e.g. 98765 43210" autocomplete="off" />
+      </div>
+      <div class="modal-hint phone-preview" id="editPhonePreview"></div>
+      <div class="modal-error" id="editStudentError"></div>
       <div class="modal-actions">
-        <button class="btn btn-ghost btn-sm" id="phoneCancelBtn">Cancel</button>
-        <button class="btn btn-primary btn-sm" id="phoneSaveBtn">Save</button>
+        <button class="btn btn-ghost btn-sm" id="editStudentCancelBtn">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="editStudentSaveBtn">Save changes</button>
       </div>
     </div>
   </div>

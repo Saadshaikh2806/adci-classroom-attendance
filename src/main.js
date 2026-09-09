@@ -249,7 +249,7 @@ Kindly ensure regular attendance.
     document.getElementById('addStudentForm').style.display    = adminUnlocked ? 'flex' : 'none';
     if (!adminUnlocked) {
       document.getElementById('importPanel').style.display = 'none';
-      closePhoneModal();
+      closeEditStudentModal();
     }
     // Phone and delete buttons live on the student cards.
     if (contextLoaded) renderStudentCards();
@@ -557,21 +557,29 @@ Kindly ensure regular attendance.
       const card = document.createElement('div');
       card.className = 'student-card';
 
+      // Admins also see the parent number here, so a missing one is obvious
+      // at a glance; attendance takers see neither.
+      const phone = normalizePhone(s.parent_phone);
+      const metaLine = [
+        s.roll_no ? escapeHtml(s.roll_no) : '',
+        adminUnlocked
+          ? (phone ? escapeHtml('+' + phone) : '<span class="no-phone-tag">no parent number</span>')
+          : '',
+      ].filter(Boolean).join(' · ');
+
       card.innerHTML = `
         <div class="student-card-meta">
           <div class="row-num">${idx + 1}</div>
           <div class="avatar">${initials(s.name)}</div>
           <div class="student-card-name">
             <div class="student-name">${escapeHtml(s.name)}</div>
-            ${s.roll_no ? `<div class="student-roll">${escapeHtml(s.roll_no)}</div>` : ''}
+            ${metaLine ? `<div class="student-roll">${metaLine}</div>` : ''}
           </div>
         </div>
         <div class="lec-chips" data-student-id="${s.id}"></div>
         ${adminUnlocked ? `
-        <button class="student-phone-btn${normalizePhone(s.parent_phone) ? ' has-phone' : ''}" type="button"
-                title="${normalizePhone(s.parent_phone) ? `Parent: ${displayPhone(s.parent_phone)}` : 'Add parent WhatsApp number'}"
-                aria-label="Parent number for ${escapeHtml(s.name)}">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.9.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>
+        <button class="student-edit-btn" type="button" title="Edit student" aria-label="Edit ${escapeHtml(s.name)}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>
         </button>
         <button class="student-delete-btn" type="button" title="Delete student" aria-label="Delete ${escapeHtml(s.name)}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
@@ -591,7 +599,7 @@ Kindly ensure regular attendance.
       });
 
       if (adminUnlocked) {
-        card.querySelector('.student-phone-btn').addEventListener('click', () => openPhoneModal(s));
+        card.querySelector('.student-edit-btn').addEventListener('click', () => openEditStudentModal(s));
         card.querySelector('.student-delete-btn').addEventListener('click', () => onDeleteStudent(s));
       }
 
@@ -624,59 +632,79 @@ Kindly ensure regular attendance.
     }
   }
 
-  // ── Parent phone editing ───────────────────────────────────────────────
-  let pendingPhoneStudent = null;
+  // ── Student editing ────────────────────────────────────────────────────
+  let pendingEditStudent = null;
 
-  function openPhoneModal(s) {
+  function openEditStudentModal(s) {
     if (!adminUnlocked) return;
-    pendingPhoneStudent = s;
-    document.getElementById('phoneModalTitle').textContent = `Parent number — ${s.name}`;
-    const input = document.getElementById('phoneInput');
-    input.value = s.parent_phone ? displayPhone(s.parent_phone) : '';
-    document.getElementById('phoneError').textContent = '';
+    pendingEditStudent = s;
+    document.getElementById('editStudentTitle').textContent = `Edit ${s.name}`;
+    document.getElementById('editNameInput').value  = s.name || '';
+    document.getElementById('editRollInput').value  = s.roll_no || '';
+    document.getElementById('editPhoneInput').value = s.parent_phone ? displayPhone(s.parent_phone) : '';
+    document.getElementById('editStudentError').textContent = '';
     updatePhonePreview();
-    document.getElementById('phoneModal').style.display = 'flex';
-    input.focus();
-    input.select();
+    document.getElementById('editStudentModal').style.display = 'flex';
+    const name = document.getElementById('editNameInput');
+    name.focus();
+    name.select();
   }
 
-  function closePhoneModal() {
-    pendingPhoneStudent = null;
-    document.getElementById('phoneModal').style.display = 'none';
+  function closeEditStudentModal() {
+    pendingEditStudent = null;
+    document.getElementById('editStudentModal').style.display = 'none';
   }
 
   function updatePhonePreview() {
-    const raw = document.getElementById('phoneInput').value.trim();
-    const el  = document.getElementById('phonePreview');
+    const raw = document.getElementById('editPhoneInput').value.trim();
+    const el  = document.getElementById('editPhonePreview');
     if (!raw)      { el.textContent = 'Leave blank to remove the saved number.'; el.classList.remove('bad'); return; }
     const n = normalizePhone(raw);
     el.textContent = n ? `Will be saved as +${n}` : 'That doesn’t look like a valid number.';
     el.classList.toggle('bad', !n);
   }
 
-  async function onPhoneSave() {
-    if (!adminUnlocked || !pendingPhoneStudent) return;
-    const s   = pendingPhoneStudent;
-    const raw = document.getElementById('phoneInput').value.trim();
-    const normalized = raw ? normalizePhone(raw) : '';
-    if (raw && !normalized) {
-      document.getElementById('phoneError').textContent = 'Enter a valid number, or clear the field to remove it.';
+  async function onEditStudentSave() {
+    if (!adminUnlocked || !pendingEditStudent) return;
+    const s    = pendingEditStudent;
+    const err  = document.getElementById('editStudentError');
+    const name = document.getElementById('editNameInput').value.trim();
+    const roll = document.getElementById('editRollInput').value.trim();
+    const raw  = document.getElementById('editPhoneInput').value.trim();
+
+    if (!name) { err.textContent = 'A name is required.'; return; }
+    const phone = raw ? normalizePhone(raw) : '';
+    if (raw && !phone) {
+      err.textContent = 'Enter a valid parent number, or clear the field to remove it.';
       return;
     }
-    const btn = document.getElementById('phoneSaveBtn');
+
+    const changes = {
+      name,
+      roll_no:      roll  || null,
+      parent_phone: phone || null,
+    };
+    if (name === s.name && changes.roll_no === (s.roll_no || null) &&
+        changes.parent_phone === (s.parent_phone || null)) {
+      closeEditStudentModal();
+      return; // nothing to save
+    }
+
+    const btn = document.getElementById('editStudentSaveBtn');
     btn.disabled = true;
     try {
       if (sb) {
-        const { error } = await sb.from('students1')
-          .update({ parent_phone: normalized || null }).eq('id', s.id);
+        const { error } = await sb.from('students1').update(changes).eq('id', s.id);
         if (error) throw error;
       }
-      s.parent_phone = normalized || null;
-      closePhoneModal();
-      renderStudentCards();
-      setStatus(normalized ? `Parent number saved for ${s.name}.` : `Parent number removed for ${s.name}.`, false);
-    } catch (err) {
-      document.getElementById('phoneError').textContent = 'Could not save: ' + err.message;
+      Object.assign(s, changes);
+      sortStudents(students); // a changed roll no can move them in the list
+      closeEditStudentModal();
+      renderAll();
+      refreshOptions();
+      setStatus(`${name} updated.`, false);
+    } catch (e) {
+      err.textContent = 'Could not save: ' + e.message;
     } finally {
       btn.disabled = false;
     }
@@ -1124,7 +1152,7 @@ Kindly ensure regular attendance.
           const ok = await requireAdmin('Enter the admin passcode to save a parent number.');
           if (!ok) return;
           closeNotifyModal();
-          openPhoneModal(d.student);
+          openEditStudentModal(d.student);
         });
         action.appendChild(btn);
       }
@@ -1217,12 +1245,14 @@ Kindly ensure regular attendance.
   });
 
   // Parent phone
-  document.getElementById('phoneSaveBtn').addEventListener('click', onPhoneSave);
-  document.getElementById('phoneCancelBtn').addEventListener('click', closePhoneModal);
-  document.getElementById('phoneInput').addEventListener('input', updatePhonePreview);
-  document.getElementById('phoneInput').addEventListener('keydown', e => e.key === 'Enter' && onPhoneSave());
-  document.getElementById('phoneModal').addEventListener('click', e => {
-    if (e.target.id === 'phoneModal') closePhoneModal();
+  document.getElementById('editStudentSaveBtn').addEventListener('click', onEditStudentSave);
+  document.getElementById('editStudentCancelBtn').addEventListener('click', closeEditStudentModal);
+  document.getElementById('editPhoneInput').addEventListener('input', updatePhonePreview);
+  ['editNameInput', 'editRollInput', 'editPhoneInput'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => e.key === 'Enter' && onEditStudentSave());
+  });
+  document.getElementById('editStudentModal').addEventListener('click', e => {
+    if (e.target.id === 'editStudentModal') closeEditStudentModal();
   });
 
   // Notify absentees (sender-gated)
@@ -1252,7 +1282,7 @@ Kindly ensure regular attendance.
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     closeSessionNameModal();
-    closePhoneModal();
+    closeEditStudentModal();
     closeNotifyModal();
     closeNotifyGate();
     if (document.getElementById('adminGateModal').style.display === 'flex') closeAdminGate(false);

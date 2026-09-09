@@ -1104,3 +1104,23 @@ button.lec-summary-chip.type-test:hover {
   font-size: 16px;
   text-align: center;
 }
+
+/* Student edit button (replaces the old phone-only button) */
+.student-edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-xs);
+  color: var(--text-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: background .13s, color .13s;
+}
+.student-edit-btn:hover { background: var(--primary-soft); color: var(--primary); }
+.student-edit-btn + .student-delete-btn { margin-left: 0; }
+
+.no-phone-tag { color: var(--warn-text); }
