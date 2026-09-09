@@ -978,13 +978,15 @@ Kindly ensure regular attendance.
   // refresh or when switching registers so a shared machine doesn't stay open.
   let notifyUnlocked = false;
 
+  // The same view is reachable from the register bar and the classes screen.
   function updateNotifyBtn() {
-    const lock = document.getElementById('notifyLockIcon');
-    const btn  = document.getElementById('notifyBtn');
-    lock.style.display = notifyUnlocked ? 'none' : '';
-    btn.title = notifyUnlocked
+    const title = notifyUnlocked
       ? 'Send absence messages to parents'
       : 'Restricted — requires the sender passcode';
+    [['notifyBtn', 'notifyLockIcon'], ['notifyAllBtn', 'notifyAllLockIcon']].forEach(([btnId, lockId]) => {
+      document.getElementById(lockId).style.display = notifyUnlocked ? 'none' : '';
+      document.getElementById(btnId).title = title;
+    });
   }
 
   function lockNotify() {
@@ -1016,9 +1018,9 @@ Kindly ensure regular attendance.
     openNotifyModal();
   }
 
-  // Entry point for the button: gate first, then show the list.
+  // Entry point for both buttons: gate first, then show the list. No register
+  // needs to be open — the view spans every class.
   function onNotifyClick() {
-    if (!contextLoaded) { setStatus('Open a class first.', true); return; }
     if (!notifyUnlocked) { openNotifyGate(); return; }
     openNotifyModal();
   }
@@ -1042,131 +1044,232 @@ Kindly ensure regular attendance.
     return out.replace(/\{(\w+)\}/g, (m, k) => (k in ctx ? ctx[k] : m));
   }
 
-  // Every student with at least one Absent mark today, with their session lists.
-  function buildDigests(tplOverride) {
-    const sessions = allSessions();
-    const tpl = tplOverride || getTemplate();
-    const digests = [];
+  // Absentees are sent by one person for the whole institute, so this view
+  // is deliberately cross-class: it reads every class and batch for a date
+  // in one pass, independent of whichever register happens to be open.
+  let notifyData = null;  // { date, groups: [...] }
 
-    students.forEach(s => {
+  function sessionOrder(row) {
+    const type = row.session_type || 'Lecture';
+    return (type === 'Test' ? 1e6 : 0) + Number(row.lecture_number);
+  }
+
+  function labelFor(titleMap, cls, batch, type, number) {
+    const t = titleMap[`${cls}__${batch}__${type}__${number}`];
+    return `${type} ${number}${t ? ` — ${t}` : ''}`;
+  }
+
+  // Shapes raw rows into per-class groups of absentee digests.
+  function groupAbsentees(studentRows, attendanceRows, titleRows) {
+    const titleMap = {};
+    (titleRows || []).forEach(r => {
+      titleMap[`${r.class_name}__${r.batch_name}__${r.session_type || 'Lecture'}__${r.session_number}`] = r.title;
+    });
+
+    const byStudent = {};
+    (attendanceRows || []).forEach(r => {
+      (byStudent[r.student_id] = byStudent[r.student_id] || []).push(r);
+    });
+
+    const groups = new Map();
+    sortStudents([...(studentRows || [])]).forEach(s => {
+      const rows = (byStudent[s.id] || []).slice().sort((a, b) => sessionOrder(a) - sessionOrder(b));
       const absent = [], present = [];
-      sessions.forEach(({ type, number }) => {
-        const st = attendanceState[sessionKey(s.id, type, number)];
-        if (!st) return;
-        (st.status === 'Absent' ? absent : present).push(sessionFullLabel(type, number));
+      rows.forEach(r => {
+        const label = labelFor(titleMap, s.class_name, s.batch_name, r.session_type || 'Lecture', r.lecture_number);
+        (r.status === 'Absent' ? absent : present).push(label);
       });
       if (!absent.length) return;
 
-      const message = fillTemplate(tpl, {
-        name:    s.name,
-        roll:    s.roll_no || '',
-        class:   currentClass,
-        batch:   currentBatch,
-        date:    formatDateLong(viewDate),
-        absent:  absent.map(l => `• ${l}`).join('\n'),
-        present: present.length ? present.join(', ') : 'None',
+      const key = `${s.class_name}||${s.batch_name}`;
+      if (!groups.has(key)) {
+        groups.set(key, { class_name: s.class_name, batch_name: s.batch_name, digests: [] });
+      }
+      groups.get(key).digests.push({
+        student: s,
+        phone:   normalizePhone(s.parent_phone),
+        absent, present,
       });
-
-      digests.push({ student: s, phone: normalizePhone(s.parent_phone), absent, present, message });
     });
 
-    return digests;
+    return [...groups.values()].sort((a, b) =>
+      a.class_name.localeCompare(b.class_name) || a.batch_name.localeCompare(b.batch_name));
+  }
+
+  async function loadAbsentees(date) {
+    if (!sb) {
+      // Demo mode has no backend, so fall back to the open register. It holds
+      // only today's marks, so any other date genuinely has nothing.
+      if (date !== todayStr() || !contextLoaded) return [];
+      const rows = [];
+      allSessions().forEach(({ type, number }) => {
+        students.forEach(s => {
+          const st = attendanceState[sessionKey(s.id, type, number)];
+          if (st) rows.push({ student_id: s.id, session_type: type, lecture_number: number, status: st.status });
+        });
+      });
+      const titleRows = Object.entries(sessionTitles).map(([k, title]) => {
+        const [type, number] = k.split('__');
+        return {
+          class_name: currentClass, batch_name: currentBatch,
+          session_type: type, session_number: Number(number), title,
+        };
+      });
+      const studs = students.map(s => ({ ...s, class_name: currentClass, batch_name: currentBatch }));
+      return groupAbsentees(studs, rows, titleRows);
+    }
+
+    const [studRes, attRes, titleRes] = await Promise.all([
+      sb.from('students1').select('*'),
+      sb.from('attendance1').select('*').eq('attendance_date', date),
+      sb.from('sessions1').select('*').eq('attendance_date', date),
+    ]);
+    if (studRes.error) throw studRes.error;
+    if (attRes.error)  throw attRes.error;
+    // Titles are optional — a missing sessions1 just means unnamed sessions.
+    return groupAbsentees(studRes.data, attRes.data, titleRes.error ? [] : titleRes.data);
+  }
+
+  function messageFor(digest, group, date, tpl) {
+    return fillTemplate(tpl, {
+      name:    digest.student.name,
+      roll:    digest.student.roll_no || '',
+      class:   group.class_name,
+      batch:   group.batch_name,
+      date:    formatDateLong(date),
+      absent:  digest.absent.map(l => `• ${l}`).join('\n'),
+      present: digest.present.length ? digest.present.join(', ') : 'None',
+    });
+  }
+
+  function currentTemplate() {
+    return document.getElementById('notifyTemplate').value.trim() || getTemplate();
   }
 
   function renderNotifyList() {
-    // Preview against exactly what's in the box, so an in-progress edit is
-    // what you see; an emptied box falls back to the default.
-    const digests = buildDigests(document.getElementById('notifyTemplate').value.trim());
     const list    = document.getElementById('notifyList');
     const empty   = document.getElementById('notifyEmpty');
     const preview = document.getElementById('notifyPreview');
+    const copyBtn = document.getElementById('notifyCopyAllBtn');
     list.innerHTML = '';
 
-    document.getElementById('notifySubtitle').textContent =
-      `${currentClass} · ${currentBatch} · ${formatDateLong(viewDate)}`;
+    if (!notifyData) return;
+    const { date, groups } = notifyData;
+    const tpl = currentTemplate();
 
-    if (!digests.length) {
+    const all = groups.flatMap(g => g.digests);
+    document.getElementById('notifySubtitle').textContent =
+      `All classes · ${formatDateLong(date)}`;
+
+    if (!all.length) {
       empty.style.display = 'block';
+      empty.textContent = `No absentees recorded in any class on ${formatDateLong(date)}.`;
       preview.style.display = 'none';
-      document.getElementById('notifyCopyAllBtn').style.display = 'none';
+      copyBtn.style.display = 'none';
       return;
     }
     empty.style.display = 'none';
-    document.getElementById('notifyCopyAllBtn').style.display = 'inline-flex';
+    copyBtn.style.display = 'inline-flex';
 
+    const first = groups[0];
     preview.style.display = 'block';
     preview.innerHTML =
-      `<div class="notify-preview-label">Preview — ${escapeHtml(digests[0].student.name)}</div>` +
-      `<pre>${escapeHtml(digests[0].message)}</pre>`;
+      `<div class="notify-preview-label">Preview — ${escapeHtml(first.digests[0].student.name)}</div>` +
+      `<pre>${escapeHtml(messageFor(first.digests[0], first, date, tpl))}</pre>`;
 
-    const withPhone = digests.filter(d => d.phone).length;
-    const noPhone   = digests.length - withPhone;
+    const withPhone = all.filter(d => d.phone).length;
+    const noPhone   = all.length - withPhone;
 
     const head = document.createElement('div');
     head.className = 'notify-count';
     head.textContent =
-      `${digests.length} absentee${digests.length > 1 ? 's' : ''}` +
+      `${all.length} absentee${all.length > 1 ? 's' : ''} across ` +
+      `${groups.length} class${groups.length > 1 ? 'es' : ''}` +
       ` · ${withPhone} with a saved number` +
       (noPhone ? ` · ${noPhone} missing a number` : '');
     list.appendChild(head);
 
-    digests.forEach(d => {
-      const row = document.createElement('div');
-      row.className = 'notify-row' + (d.phone ? '' : ' no-phone') +
-        (notifySent.has(d.student.id) ? ' sent' : '');
-      row.innerHTML = `
-        <div class="avatar">${initials(d.student.name)}</div>
-        <div class="notify-row-main">
-          <div class="student-name">${escapeHtml(d.student.name)}</div>
-          <div class="student-roll">
-            ${d.student.roll_no ? escapeHtml(d.student.roll_no) + ' · ' : ''}
-            ${d.phone ? escapeHtml('+' + d.phone) : 'No parent number saved'}
+    groups.forEach(g => {
+      const header = document.createElement('div');
+      header.className = 'notify-group-header';
+      header.innerHTML =
+        `<span class="notify-group-name">${escapeHtml(g.class_name)} · ${escapeHtml(g.batch_name)}</span>` +
+        `<span class="notify-group-count">${g.digests.length}</span>`;
+      list.appendChild(header);
+
+      g.digests.forEach(d => {
+        const message = messageFor(d, g, date, tpl);
+        const row = document.createElement('div');
+        row.className = 'notify-row' + (d.phone ? '' : ' no-phone') +
+          (notifySent.has(d.student.id) ? ' sent' : '');
+        row.innerHTML = `
+          <div class="avatar">${initials(d.student.name)}</div>
+          <div class="notify-row-main">
+            <div class="student-name">${escapeHtml(d.student.name)}</div>
+            <div class="student-roll">
+              ${d.student.roll_no ? escapeHtml(d.student.roll_no) + ' · ' : ''}
+              ${d.phone ? escapeHtml('+' + d.phone) : 'No parent number saved'}
+            </div>
+            <div class="notify-row-sessions">Absent: ${escapeHtml(d.absent.join(', '))}</div>
           </div>
-          <div class="notify-row-sessions">Absent: ${escapeHtml(d.absent.join(', '))}</div>
-        </div>
-        <div class="notify-row-action"></div>`;
+          <div class="notify-row-action"></div>`;
 
-      const action = row.querySelector('.notify-row-action');
-      if (d.phone) {
+        const action = row.querySelector('.notify-row-action');
         const btn = document.createElement('button');
-        btn.className = 'btn btn-whatsapp btn-sm';
         btn.type = 'button';
-        btn.textContent = notifySent.has(d.student.id) ? 'Sent ✓' : 'Send';
-        btn.addEventListener('click', () => {
-          const url = `https://wa.me/${d.phone}?text=${encodeURIComponent(d.message)}`;
-          const win = window.open(url, '_blank', 'noopener');
-          if (!win) { setStatus('Pop-up blocked — allow pop-ups for this site to open WhatsApp.', true); return; }
-          notifySent.add(d.student.id);
-          btn.textContent = 'Sent ✓';
-          row.classList.add('sent');
-        });
+        if (d.phone) {
+          btn.className = 'btn btn-whatsapp btn-sm';
+          btn.textContent = notifySent.has(d.student.id) ? 'Sent ✓' : 'Send';
+          btn.addEventListener('click', () => {
+            const url = `https://wa.me/${d.phone}?text=${encodeURIComponent(message)}`;
+            if (!window.open(url, '_blank', 'noopener')) {
+              setStatus('Pop-up blocked — allow pop-ups for this site to open WhatsApp.', true);
+              return;
+            }
+            notifySent.add(d.student.id);
+            btn.textContent = 'Sent ✓';
+            row.classList.add('sent');
+          });
+        } else {
+          btn.className = 'btn btn-ghost btn-sm';
+          btn.textContent = 'Add number';
+          // Saving a number is data entry, so it needs the admin passcode even
+          // though the sender is already unlocked.
+          btn.addEventListener('click', async () => {
+            const ok = await requireAdmin('Enter the admin passcode to save a parent number.');
+            if (!ok) return;
+            closeNotifyModal();
+            openEditStudentModal(d.student);
+          });
+        }
         action.appendChild(btn);
-      } else {
-        const btn = document.createElement('button');
-        btn.className = 'btn btn-ghost btn-sm';
-        btn.type = 'button';
-        btn.textContent = 'Add number';
-        // Saving a number is data entry, so it needs the admin passcode even
-        // though the sender is already unlocked.
-        btn.addEventListener('click', async () => {
-          const ok = await requireAdmin('Enter the admin passcode to save a parent number.');
-          if (!ok) return;
-          closeNotifyModal();
-          openEditStudentModal(d.student);
-        });
-        action.appendChild(btn);
-      }
-
-      list.appendChild(row);
+        list.appendChild(row);
+      });
     });
   }
 
-  function openNotifyModal() {
-    if (!contextLoaded) { setStatus('Open a class first.', true); return; }
+  async function refreshNotifyData() {
+    const date = document.getElementById('notifyDateInput').value || todayStr();
+    const list = document.getElementById('notifyList');
+    list.innerHTML = '<div class="notify-count">Loading…</div>';
+    try {
+      notifyData = { date, groups: await loadAbsentees(date) };
+      renderNotifyList();
+    } catch (err) {
+      notifyData = null;
+      list.innerHTML = '';
+      setStatus('Could not load absentees: ' + err.message, true);
+    }
+  }
+
+  async function openNotifyModal() {
     if (!notifyUnlocked) { openNotifyGate(); return; }
+    const dateEl = document.getElementById('notifyDateInput');
+    if (!dateEl.value) dateEl.value = contextLoaded ? viewDate : todayStr();
+    dateEl.max = todayStr();
     document.getElementById('notifyTemplate').value = getTemplate();
-    renderNotifyList();
     document.getElementById('notifyModal').style.display = 'flex';
+    await refreshNotifyData();
   }
 
   function closeNotifyModal() {
@@ -1174,14 +1277,20 @@ Kindly ensure regular attendance.
   }
 
   async function onNotifyCopyAll() {
-    const digests = buildDigests();
-    if (!digests.length) return;
-    const text = digests
-      .map(d => `${d.student.name}${d.phone ? ` (+${d.phone})` : ' (no number)'}\n${d.message}`)
-      .join('\n\n———\n\n');
+    if (!notifyData) return;
+    const tpl = currentTemplate();
+    const blocks = [];
+    notifyData.groups.forEach(g => {
+      blocks.push(`=== ${g.class_name} · ${g.batch_name} ===`);
+      g.digests.forEach(d => {
+        blocks.push(`${d.student.name}${d.phone ? ` (+${d.phone})` : ' (no number)'}\n` +
+                    messageFor(d, g, notifyData.date, tpl));
+      });
+    });
+    if (!blocks.length) return;
     try {
-      await navigator.clipboard.writeText(text);
-      setStatus(`${digests.length} message${digests.length > 1 ? 's' : ''} copied to clipboard.`, false);
+      await navigator.clipboard.writeText(blocks.join('\n\n———\n\n'));
+      setStatus('All messages copied to clipboard.', false);
     } catch (_) {
       setStatus('Could not access the clipboard — copy from the preview instead.', true);
     }
@@ -1257,6 +1366,8 @@ Kindly ensure regular attendance.
 
   // Notify absentees (sender-gated)
   document.getElementById('notifyBtn').addEventListener('click', onNotifyClick);
+  document.getElementById('notifyAllBtn').addEventListener('click', onNotifyClick);
+  document.getElementById('notifyDateInput').addEventListener('change', refreshNotifyData);
   document.getElementById('notifyGateSubmitBtn').addEventListener('click', onNotifyGateSubmit);
   document.getElementById('notifyGateCancelBtn').addEventListener('click', closeNotifyGate);
   document.getElementById('notifyGateInput').addEventListener('keydown', e => e.key === 'Enter' && onNotifyGateSubmit());
@@ -1449,6 +1560,7 @@ Kindly ensure regular attendance.
   }
 
   (async function init() {
+    updateNotifyBtn(); // the sender can start from the classes screen
     const dateEl = document.getElementById('dateInput');
     dateEl.value = todayStr();
     dateEl.max   = todayStr();
