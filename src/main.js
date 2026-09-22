@@ -1221,11 +1221,19 @@ Kindly ensure regular attendance.
           btn.className = 'btn btn-whatsapp btn-sm';
           btn.textContent = notifySent.has(d.student.id) ? 'Sent ✓' : 'Send';
           btn.addEventListener('click', () => {
-            const url = `https://wa.me/${d.phone}?text=${encodeURIComponent(message)}`;
-            if (!window.open(url, '_blank', 'noopener')) {
-              setStatus('Pop-up blocked — allow pop-ups for this site to open WhatsApp.', true);
-              return;
-            }
+            // whatsapp:// is handled by the WhatsApp desktop app directly, so
+            // no browser tab opens first. Falls back to wa.me (which does
+            // open a tab) if the app isn't installed to handle the scheme.
+            const text = encodeURIComponent(message);
+            window.location.href = `whatsapp://send?phone=${d.phone}&text=${text}`;
+            setTimeout(() => {
+              if (document.hidden) return;
+              const url = `https://wa.me/${d.phone}?text=${text}`;
+              if (!window.open(url, '_blank', 'noopener')) {
+                setStatus('Pop-up blocked — allow pop-ups for this site to open WhatsApp.', true);
+                return;
+              }
+            }, 700);
             notifySent.add(d.student.id);
             btn.textContent = 'Sent ✓';
             row.classList.add('sent');
