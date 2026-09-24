@@ -36,6 +36,11 @@
   --shadow-md:    0 10px 15px -3px rgba(0,0,0,.08), 0 4px 6px -4px rgba(0,0,0,.05);
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   font-size: 14px;
@@ -156,6 +161,7 @@ body {
 }
 
 .alert svg { flex-shrink: 0; margin-top: 1px; }
+.alert > span { min-width: 0; overflow-wrap: break-word; }
 
 .alert-warn {
   background: var(--warn-bg);
@@ -181,7 +187,15 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 16px;
+}
+
+.classes-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .classes-title {
@@ -214,9 +228,12 @@ body {
   transition: transform .13s, box-shadow .13s;
 }
 
-.class-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+/* Hover lift only where there is a real pointer — on touch it sticks after a tap. */
+@media (hover: hover) {
+  .class-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
 }
 
 .class-card:active { transform: translateY(0); }
@@ -255,11 +272,13 @@ body {
   justify-content: center;
   z-index: 100;
   padding: 16px;
+  overflow-y: auto;
 }
 
 .modal {
   width: 100%;
   max-width: 340px;
+  margin: auto; /* centres, but still scrolls from the top when taller than the screen */
   padding: 22px;
   display: flex;
   flex-direction: column;
@@ -417,7 +436,7 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .badge-readonly {
@@ -564,14 +583,17 @@ button { font-family: inherit; cursor: pointer; }
 .student-card:last-child { border-bottom: none; }
 .student-card:hover { background: var(--surface-2); }
 
+/* Fixed-width name column so every row's lecture chips line up. */
 .student-card-meta {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 180px;
-  flex-shrink: 0;
+  flex: 0 0 240px;
+  min-width: 0;
   padding-top: 2px;
 }
+
+.student-card-name { min-width: 0; }
 
 .row-num {
   width: 26px;
@@ -603,7 +625,7 @@ button { font-family: inherit; cursor: pointer; }
   border: 1.5px solid #c7d2fe;
 }
 
-.student-name { font-weight: 600; font-size: 14px; }
+.student-name { font-weight: 600; font-size: 14px; overflow-wrap: break-word; }
 .student-roll { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
 
 .student-delete-btn {
@@ -853,27 +875,6 @@ footer {
   padding-top: 8px;
 }
 
-/* ── Responsive ───────────────────────────────────────────── */
-@media (max-width: 640px) {
-  .header { flex-direction: column; align-items: flex-start; }
-  .clock-card { width: 100%; }
-  .context-fields { flex-direction: column; align-items: stretch; }
-  #classInput, #batchInput, #dateInput { width: 100%; }
-  .toolbar { flex-direction: column; align-items: stretch; }
-  .add-student-form { flex-direction: column; }
-  #newStudentName, #newStudentRoll { width: 100%; }
-  .register-bar { flex-direction: column; align-items: flex-start; }
-  .status-msg { margin-left: 0; }
-  .student-card { gap: 10px; }
-  .student-card-meta { min-width: unset; width: 100%; }
-  .lec-chips { width: 100%; }
-  .lec-chip { width: 40px; height: 40px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
-}
-
 /* ── Session topics (named lectures/tests) ────────────────── */
 .lec-summary-chip {
   flex-direction: column;
@@ -1081,14 +1082,6 @@ button.lec-summary-chip.type-test:hover {
 
 .notify-actions { justify-content: space-between; }
 
-@media (max-width: 640px) {
-  #newStudentPhone { width: 100%; }
-  .lec-summary-topic { max-width: 120px; }
-  .notify-row { flex-wrap: wrap; }
-  .notify-row-action { width: 100%; }
-  .notify-row-action .btn { width: 100%; justify-content: center; }
-}
-
 /* Locked state for the sender-gated notify button */
 #notifyLockIcon { opacity: .55; margin-left: -2px; }
 .modal #notifyGateInput {
@@ -1171,4 +1164,100 @@ button.lec-summary-chip.type-test:hover {
   border: 1px solid var(--absent-border);
   border-radius: 20px;
   padding: 1px 8px;
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+/* Kept last so these overrides win over the component rules above. */
+
+/* Large desktop: a little more breathing room. */
+@media (min-width: 1280px) {
+  body { padding: 32px 24px 72px; }
+  .app { gap: 20px; }
+}
+
+/* Tablet / small laptop: new-class fields share the row evenly. */
+@media (max-width: 900px) {
+  .context-fields .field-group { flex: 1 1 200px; }
+  #classInput, #batchInput, #dateInput { width: 100%; }
+}
+
+/* Touch screens: 16px inputs stop iOS Safari zooming in on focus. */
+@media (pointer: coarse) {
+  input:not([type="file"]),
+  .notify-template textarea,
+  #importTextarea { font-size: 16px; }
+}
+
+/* Phone */
+@media (max-width: 640px) {
+  body { padding: 12px 12px 48px; }
+  .app { gap: 12px; }
+
+  /* Header: brand on top, clock as a slim date · time strip */
+  .header { flex-direction: column; align-items: stretch; gap: 12px; padding-bottom: 0; }
+  .brand-logo { width: 40px; height: 40px; }
+  .brand-name { font-size: 17px; }
+  .brand-sub { font-size: 12.5px; }
+  .clock-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 14px;
+  }
+  .clock-time { font-size: 17px; margin-top: 0; }
+
+  /* Classes */
+  .classes-card, .context-card, .import-panel { padding: 16px; }
+  .classes-actions { width: 100%; }
+  .classes-actions .btn { flex: 1 1 auto; justify-content: center; }
+  .classes-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .class-card { min-height: 88px; padding: 14px; gap: 16px; }
+  .class-card-name { font-size: 14px; }
+
+  /* New-class form */
+  .context-fields { flex-direction: column; align-items: stretch; }
+  .context-fields .field-group { flex: none; }
+  .context-fields .btn { justify-content: center; }
+
+  /* Register bar */
+  .register-bar { flex-direction: column; align-items: stretch; padding: 12px 14px; }
+  .register-bar-actions .btn { flex: 1 1 auto; justify-content: center; }
+
+  /* Toolbar */
+  .toolbar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .toolbar > .btn { justify-content: center; }
+  .add-student-form { flex-direction: column; align-items: stretch; padding: 12px; }
+  #newStudentName, #newStudentRoll, #newStudentPhone { width: 100%; }
+  .add-student-form .btn { justify-content: center; }
+  .status-msg { margin-left: 0; text-align: center; }
+  .status-msg:empty { display: none; }
+
+  /* Register: name + edit/delete on one row, lecture chips full width below */
+  .lec-summary-bar { padding: 10px 12px; }
+  .lec-summary-topic { max-width: 120px; }
+  .student-card { gap: 10px 8px; padding: 12px; }
+  .student-card-meta { flex: 1 1 0; }
+  .student-edit-btn, .student-delete-btn { order: 1; }
+  .lec-chips { order: 2; flex-basis: 100%; }
+  .lec-chip { width: 40px; height: 40px; }
+
+  /* Import */
+  .import-upload-row .btn { flex: 1 1 auto; justify-content: center; }
+
+  /* Modals */
+  .modal-overlay { padding: 12px; }
+  .modal { padding: 18px; }
+  .modal-actions .btn { flex: 1 1 0; justify-content: center; }
+  .modal.modal-wide { max-height: calc(100dvh - 24px); }
+  .notify-date-row input { flex: 1 1 140px; }
+  .notify-row { flex-wrap: wrap; }
+  .notify-row-action { width: 100%; }
+  .notify-row-action .btn { width: 100%; justify-content: center; }
+
+  footer { font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
 }
