@@ -27,7 +27,8 @@
   const LS_CLASS    = 'adci_class';
   const LS_BATCH    = 'adci_batch';
   const LS_CODE     = 'adci_code';
-  const LS_TEMPLATE = 'adci_wa_template';
+  // The absent key predates present messages, so it keeps its old name.
+  const LS_TEMPLATES = { absent: 'adci_wa_template', present: 'adci_wa_template_present' };
 
   // Attendance takers and the person who messages parents are different
   // people, so notifying is gated behind its own passcode. Note this is
@@ -37,7 +38,10 @@
   // Bare 10-digit numbers are assumed to be Indian mobiles.
   const DEFAULT_COUNTRY_CODE = '91';
 
-  const DEFAULT_TEMPLATE =
+  // A student who missed any session gets the absent message; one who
+  // attended every marked session gets the present message.
+  const DEFAULT_TEMPLATES = {
+    absent:
 `Dear Parent,
 
 This is to inform you that {name} ({roll}) was marked ABSENT for the following session(s) on {date}:
@@ -47,7 +51,19 @@ This is to inform you that {name} ({roll}) was marked ABSENT for the following s
 Class: {class} · {batch}
 
 Kindly ensure regular attendance.
-— ADCI`;
+— ADCI`,
+    present:
+`Dear Parent,
+
+This is to inform you that {name} ({roll}) was marked PRESENT for the following session(s) on {date}:
+
+{present}
+
+Class: {class} · {batch}
+
+Thank you for your support.
+— ADCI`,
+  };
 
   const CLASS_COLORS = [
     '#6366f1', '#0ea5e9', '#f59e0b', '#ef4444',
@@ -247,11 +263,16 @@ Kindly ensure regular attendance.
   function applyRoleVisibility() {
     document.getElementById('manageStudentsBtn').style.display = adminUnlocked ? 'none' : 'inline-flex';
     document.getElementById('addStudentForm').style.display    = adminUnlocked ? 'flex' : 'none';
+    document.getElementById('manageClassesLockIcon').style.display = adminUnlocked ? 'none' : '';
+    document.getElementById('manageClassesLabel').textContent = adminUnlocked ? 'Done' : 'Manage classes';
     if (!adminUnlocked) {
       document.getElementById('importPanel').style.display = 'none';
+      document.getElementById('contextCard').style.display = 'none';
       closeEditStudentModal();
     }
-    // Phone and delete buttons live on the student cards.
+    // Delete buttons live on the class cards; phone and delete buttons on the
+    // student cards.
+    renderClasses();
     if (contextLoaded) renderStudentCards();
   }
 
@@ -319,6 +340,11 @@ Kindly ensure regular attendance.
     empty.style.display = 'none';
 
     classesList.forEach(c => {
+      // The card is itself a button, so the admin's delete button sits
+      // beside it in a wrapper rather than nested inside it.
+      const wrap = document.createElement('div');
+      wrap.className = 'class-card-wrap' + (adminUnlocked ? ' managing' : '');
+
       const card = document.createElement('button');
       card.className = 'class-card';
       card.type = 'button';
@@ -330,8 +356,95 @@ Kindly ensure regular attendance.
         </div>
         <svg class="class-card-lock" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
       card.addEventListener('click', () => openPasscodeModal(c));
-      grid.appendChild(card);
+      wrap.appendChild(card);
+
+      if (adminUnlocked) {
+        const del = document.createElement('button');
+        del.className = 'class-card-delete';
+        del.type = 'button';
+        del.title = 'Delete class';
+        del.setAttribute('aria-label', `Delete ${c.class_name} · ${c.batch_name}`);
+        del.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
+        del.addEventListener('click', () => onDeleteClass(c));
+        wrap.appendChild(del);
+      }
+
+      grid.appendChild(wrap);
     });
+  }
+
+  // Deletes the class card together with everything filed under it: its
+  // students, their attendance, and its session titles. Children go first so
+  // a failure part-way leaves the card in place to retry.
+  async function onDeleteClass(c) {
+    if (!adminUnlocked) return;
+    const label = `${c.class_name} · ${c.batch_name}`;
+
+    // The status line lives in the register toolbar, which is hidden on the
+    // classes screen, so failures here are reported in a dialog instead.
+    const fail = err => showDialog({
+      title: 'Could not delete class',
+      html: escapeHtml(err.message || String(err)),
+      okLabel: 'OK', showCancel: false,
+    });
+
+    let studentIds = [];
+    if (sb) {
+      const { data, error } = await sb.from('students1').select('id')
+        .eq('class_name', c.class_name).eq('batch_name', c.batch_name);
+      if (error) { await fail(error); return; }
+      studentIds = (data || []).map(r => r.id);
+    } else if (contextLoaded && c.class_name === currentClass && c.batch_name === currentBatch) {
+      studentIds = students.map(s => s.id);
+    }
+
+    const n = studentIds.length;
+    const ok = await showDialog({
+      title: 'Delete class?',
+      html: `Permanently delete <strong>${escapeHtml(label)}</strong>` +
+            (n ? `, its ${n} student${n > 1 ? 's' : ''} and all of their attendance records` : '') +
+            `? This can't be undone.`,
+      okLabel: 'Delete class', danger: true,
+    });
+    if (!ok) return;
+
+    try {
+      if (sb) {
+        if (studentIds.length) {
+          const att = await sb.from('attendance1').delete().in('student_id', studentIds);
+          if (att.error) throw att.error;
+        }
+        const stu = await sb.from('students1').delete()
+          .eq('class_name', c.class_name).eq('batch_name', c.batch_name);
+        if (stu.error) throw stu.error;
+        // Titles are optional — a missing sessions1 table isn't a failure.
+        await sb.from('sessions1').delete()
+          .eq('class_name', c.class_name).eq('batch_name', c.batch_name);
+        const cls = await sb.from('classes1').delete().eq('id', c.id);
+        if (cls.error) throw cls.error;
+      }
+    } catch (err) {
+      await fail(err);
+      return;
+    }
+
+    classesList = classesList.filter(x => x !== c);
+    if (c.class_name === currentClass && c.batch_name === currentBatch) {
+      contextLoaded = false;
+      students = [];
+      attendanceState = {};
+      sessionTitles = {};
+    }
+    try {
+      if (localStorage.getItem(LS_CLASS) === c.class_name &&
+          localStorage.getItem(LS_BATCH) === c.batch_name) {
+        localStorage.removeItem(LS_CLASS);
+        localStorage.removeItem(LS_BATCH);
+        localStorage.removeItem(LS_CODE);
+      }
+    } catch (_) {}
+    renderClasses();
+    refreshOptions();
   }
 
   function openPasscodeModal(classRow) {
@@ -968,11 +1081,13 @@ Kindly ensure regular attendance.
     if (msg) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
   }
 
-  // ── WhatsApp absentee notifications ────────────────────────────────────
-  // One digest message per student covering every session they missed that
-  // day, opened as a pre-filled wa.me chat. wa.me cannot auto-send: the
-  // teacher presses send in WhatsApp, so this is one tap per parent.
+  // ── WhatsApp parent notifications ──────────────────────────────────────
+  // One digest message per student covering that day's sessions — an absent
+  // message if they missed any, a present message if they attended them all —
+  // opened as a pre-filled wa.me chat. wa.me cannot auto-send: the teacher
+  // presses send in WhatsApp, so this is one tap per parent.
   const notifySent = new Set();
+  let notifyFilter = 'all';  // 'all' | 'absent' | 'present'
 
   // Held in memory only: unlocking lasts for this tab, and is dropped on
   // refresh or when switching registers so a shared machine doesn't stay open.
@@ -981,7 +1096,7 @@ Kindly ensure regular attendance.
   // The same view is reachable from the register bar and the classes screen.
   function updateNotifyBtn() {
     const title = notifyUnlocked
-      ? 'Send absence messages to parents'
+      ? 'Send attendance messages to parents'
       : 'Restricted — requires the sender passcode';
     [['notifyBtn', 'notifyLockIcon'], ['notifyAllBtn', 'notifyAllLockIcon']].forEach(([btnId, lockId]) => {
       document.getElementById(lockId).style.display = notifyUnlocked ? 'none' : '';
@@ -1025,16 +1140,20 @@ Kindly ensure regular attendance.
     openNotifyModal();
   }
 
-  function getTemplate() {
-    try { return localStorage.getItem(LS_TEMPLATE) || DEFAULT_TEMPLATE; }
-    catch (_) { return DEFAULT_TEMPLATE; }
+  function getTemplate(kind) {
+    try { return localStorage.getItem(LS_TEMPLATES[kind]) || DEFAULT_TEMPLATES[kind]; }
+    catch (_) { return DEFAULT_TEMPLATES[kind]; }
   }
 
-  function setTemplate(tpl) {
+  function setTemplate(kind, tpl) {
     try {
-      if (tpl && tpl !== DEFAULT_TEMPLATE) localStorage.setItem(LS_TEMPLATE, tpl);
-      else localStorage.removeItem(LS_TEMPLATE);
+      if (tpl && tpl !== DEFAULT_TEMPLATES[kind]) localStorage.setItem(LS_TEMPLATES[kind], tpl);
+      else localStorage.removeItem(LS_TEMPLATES[kind]);
     } catch (_) {}
+  }
+
+  function templateInput(kind) {
+    return document.getElementById(kind === 'present' ? 'notifyTemplatePresent' : 'notifyTemplateAbsent');
   }
 
   function fillTemplate(tpl, ctx) {
@@ -1044,9 +1163,9 @@ Kindly ensure regular attendance.
     return out.replace(/\{(\w+)\}/g, (m, k) => (k in ctx ? ctx[k] : m));
   }
 
-  // Absentees are sent by one person for the whole institute, so this view
-  // is deliberately cross-class: it reads every class and batch for a date
-  // in one pass, independent of whichever register happens to be open.
+  // Parent messages are sent by one person for the whole institute, so this
+  // view is deliberately cross-class: it reads every class and batch for a
+  // date in one pass, independent of whichever register happens to be open.
   let notifyData = null;  // { date, groups: [...] }
 
   function sessionOrder(row) {
@@ -1059,8 +1178,9 @@ Kindly ensure regular attendance.
     return `${type} ${number}${t ? ` — ${t}` : ''}`;
   }
 
-  // Shapes raw rows into per-class groups of absentee digests.
-  function groupAbsentees(studentRows, attendanceRows, titleRows) {
+  // Shapes raw rows into per-class groups of attendance digests. Students
+  // with nothing marked that day are left out.
+  function groupDigests(studentRows, attendanceRows, titleRows) {
     const titleMap = {};
     (titleRows || []).forEach(r => {
       titleMap[`${r.class_name}__${r.batch_name}__${r.session_type || 'Lecture'}__${r.session_number}`] = r.title;
@@ -1079,7 +1199,7 @@ Kindly ensure regular attendance.
         const label = labelFor(titleMap, s.class_name, s.batch_name, r.session_type || 'Lecture', r.lecture_number);
         (r.status === 'Absent' ? absent : present).push(label);
       });
-      if (!absent.length) return;
+      if (!absent.length && !present.length) return;
 
       const key = `${s.class_name}||${s.batch_name}`;
       if (!groups.has(key)) {
@@ -1088,6 +1208,7 @@ Kindly ensure regular attendance.
       groups.get(key).digests.push({
         student: s,
         phone:   normalizePhone(s.parent_phone),
+        kind:    absent.length ? 'absent' : 'present',
         absent, present,
       });
     });
@@ -1096,7 +1217,7 @@ Kindly ensure regular attendance.
       a.class_name.localeCompare(b.class_name) || a.batch_name.localeCompare(b.batch_name));
   }
 
-  async function loadAbsentees(date) {
+  async function loadDigests(date) {
     if (!sb) {
       // Demo mode has no backend, so fall back to the open register. It holds
       // only today's marks, so any other date genuinely has nothing.
@@ -1116,7 +1237,7 @@ Kindly ensure regular attendance.
         };
       });
       const studs = students.map(s => ({ ...s, class_name: currentClass, batch_name: currentBatch }));
-      return groupAbsentees(studs, rows, titleRows);
+      return groupDigests(studs, rows, titleRows);
     }
 
     const [studRes, attRes, titleRes] = await Promise.all([
@@ -1127,23 +1248,36 @@ Kindly ensure regular attendance.
     if (studRes.error) throw studRes.error;
     if (attRes.error)  throw attRes.error;
     // Titles are optional — a missing sessions1 just means unnamed sessions.
-    return groupAbsentees(studRes.data, attRes.data, titleRes.error ? [] : titleRes.data);
+    return groupDigests(studRes.data, attRes.data, titleRes.error ? [] : titleRes.data);
   }
 
-  function messageFor(digest, group, date, tpl) {
-    return fillTemplate(tpl, {
+  const bulletList = labels => labels.length ? labels.map(l => `• ${l}`).join('\n') : 'None';
+
+  function messageFor(digest, group, date, tpls) {
+    return fillTemplate(tpls[digest.kind], {
       name:    digest.student.name,
       roll:    digest.student.roll_no || '',
       class:   group.class_name,
       batch:   group.batch_name,
       date:    formatDateLong(date),
-      absent:  digest.absent.map(l => `• ${l}`).join('\n'),
-      present: digest.present.length ? digest.present.join(', ') : 'None',
+      absent:  bulletList(digest.absent),
+      present: bulletList(digest.present),
     });
   }
 
-  function currentTemplate() {
-    return document.getElementById('notifyTemplate').value.trim() || getTemplate();
+  function currentTemplates() {
+    return {
+      absent:  templateInput('absent').value.trim()  || getTemplate('absent'),
+      present: templateInput('present').value.trim() || getTemplate('present'),
+    };
+  }
+
+  // The groups narrowed to the chosen filter, dropping any left empty.
+  function filteredGroups() {
+    if (!notifyData) return [];
+    return notifyData.groups
+      .map(g => ({ ...g, digests: g.digests.filter(d => notifyFilter === 'all' || d.kind === notifyFilter) }))
+      .filter(g => g.digests.length);
   }
 
   function renderNotifyList() {
@@ -1154,16 +1288,31 @@ Kindly ensure regular attendance.
     list.innerHTML = '';
 
     if (!notifyData) return;
-    const { date, groups } = notifyData;
-    const tpl = currentTemplate();
+    const { date } = notifyData;
+    const tpls = currentTemplates();
 
-    const all = groups.flatMap(g => g.digests);
     document.getElementById('notifySubtitle').textContent =
       `All classes · ${formatDateLong(date)}`;
 
+    // Filter buttons show the day's totals whichever filter is active.
+    const everyone = notifyData.groups.flatMap(g => g.digests);
+    const totals = {
+      all:     everyone.length,
+      absent:  everyone.filter(d => d.kind === 'absent').length,
+      present: everyone.filter(d => d.kind === 'present').length,
+    };
+    document.querySelectorAll('.notify-filter-btn').forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.filter === notifyFilter));
+      b.querySelector('.notify-filter-count').textContent = totals[b.dataset.filter];
+    });
+
+    const groups = filteredGroups();
+    const all = groups.flatMap(g => g.digests);
+
     if (!all.length) {
+      const what = { all: 'No attendance', absent: 'No absentees', present: 'No present students' }[notifyFilter];
       empty.style.display = 'block';
-      empty.textContent = `No absentees recorded in any class on ${formatDateLong(date)}.`;
+      empty.textContent = `${what} recorded in any class on ${formatDateLong(date)}.`;
       preview.style.display = 'none';
       copyBtn.style.display = 'none';
       return;
@@ -1171,11 +1320,17 @@ Kindly ensure regular attendance.
     empty.style.display = 'none';
     copyBtn.style.display = 'inline-flex';
 
-    const first = groups[0];
-    preview.style.display = 'block';
-    preview.innerHTML =
-      `<div class="notify-preview-label">Preview — ${escapeHtml(first.digests[0].student.name)}</div>` +
-      `<pre>${escapeHtml(messageFor(first.digests[0], first, date, tpl))}</pre>`;
+    // One preview per message kind on show, so both templates can be checked.
+    preview.style.display = 'flex';
+    preview.innerHTML = ['absent', 'present'].map(kind => {
+      const g = groups.find(g => g.digests.some(d => d.kind === kind));
+      if (!g) return '';
+      const d = g.digests.find(d => d.kind === kind);
+      return `<div class="notify-preview">` +
+        `<div class="notify-preview-label">Preview — ${kind} message · ${escapeHtml(d.student.name)}</div>` +
+        `<pre>${escapeHtml(messageFor(d, g, date, tpls))}</pre>` +
+      `</div>`;
+    }).join('');
 
     const withPhone = all.filter(d => d.phone).length;
     const noPhone   = all.length - withPhone;
@@ -1183,22 +1338,30 @@ Kindly ensure regular attendance.
     const head = document.createElement('div');
     head.className = 'notify-count';
     head.textContent =
-      `${all.length} absentee${all.length > 1 ? 's' : ''} across ` +
+      `${all.length} parent${all.length > 1 ? 's' : ''} to message across ` +
       `${groups.length} class${groups.length > 1 ? 'es' : ''}` +
       ` · ${withPhone} with a saved number` +
       (noPhone ? ` · ${noPhone} missing a number` : '');
     list.appendChild(head);
 
     groups.forEach(g => {
+      const nAbsent  = g.digests.filter(d => d.kind === 'absent').length;
+      const nPresent = g.digests.length - nAbsent;
       const header = document.createElement('div');
       header.className = 'notify-group-header';
       header.innerHTML =
         `<span class="notify-group-name">${escapeHtml(g.class_name)} · ${escapeHtml(g.batch_name)}</span>` +
-        `<span class="notify-group-count">${g.digests.length}</span>`;
+        `<span class="notify-group-counts">` +
+          (nAbsent  ? `<span class="notify-group-count">${nAbsent} absent</span>` : '') +
+          (nPresent ? `<span class="notify-group-count is-present">${nPresent} present</span>` : '') +
+        `</span>`;
       list.appendChild(header);
 
       g.digests.forEach(d => {
-        const message = messageFor(d, g, date, tpl);
+        const message = messageFor(d, g, date, tpls);
+        const sessions = d.kind === 'absent'
+          ? `Absent: ${d.absent.join(', ')}`
+          : `Present: ${d.present.join(', ')}`;
         const row = document.createElement('div');
         row.className = 'notify-row' + (d.phone ? '' : ' no-phone') +
           (notifySent.has(d.student.id) ? ' sent' : '');
@@ -1210,7 +1373,7 @@ Kindly ensure regular attendance.
               ${d.student.roll_no ? escapeHtml(d.student.roll_no) + ' · ' : ''}
               ${d.phone ? escapeHtml('+' + d.phone) : 'No parent number saved'}
             </div>
-            <div class="notify-row-sessions">Absent: ${escapeHtml(d.absent.join(', '))}</div>
+            <div class="notify-row-sessions${d.kind === 'present' ? ' is-present' : ''}">${escapeHtml(sessions)}</div>
           </div>
           <div class="notify-row-action"></div>`;
 
@@ -1261,12 +1424,12 @@ Kindly ensure regular attendance.
     const list = document.getElementById('notifyList');
     list.innerHTML = '<div class="notify-count">Loading…</div>';
     try {
-      notifyData = { date, groups: await loadAbsentees(date) };
+      notifyData = { date, groups: await loadDigests(date) };
       renderNotifyList();
     } catch (err) {
       notifyData = null;
       list.innerHTML = '';
-      setStatus('Could not load absentees: ' + err.message, true);
+      setStatus('Could not load attendance: ' + err.message, true);
     }
   }
 
@@ -1275,7 +1438,8 @@ Kindly ensure regular attendance.
     const dateEl = document.getElementById('notifyDateInput');
     if (!dateEl.value) dateEl.value = contextLoaded ? viewDate : todayStr();
     dateEl.max = todayStr();
-    document.getElementById('notifyTemplate').value = getTemplate();
+    templateInput('absent').value  = getTemplate('absent');
+    templateInput('present').value = getTemplate('present');
     document.getElementById('notifyModal').style.display = 'flex';
     await refreshNotifyData();
   }
@@ -1286,13 +1450,13 @@ Kindly ensure regular attendance.
 
   async function onNotifyCopyAll() {
     if (!notifyData) return;
-    const tpl = currentTemplate();
+    const tpls = currentTemplates();
     const blocks = [];
-    notifyData.groups.forEach(g => {
+    filteredGroups().forEach(g => {
       blocks.push(`=== ${g.class_name} · ${g.batch_name} ===`);
       g.digests.forEach(d => {
         blocks.push(`${d.student.name}${d.phone ? ` (+${d.phone})` : ' (no number)'}\n` +
-                    messageFor(d, g, notifyData.date, tpl));
+                    messageFor(d, g, notifyData.date, tpls));
       });
     });
     if (!blocks.length) return;
@@ -1372,7 +1536,7 @@ Kindly ensure regular attendance.
     if (e.target.id === 'editStudentModal') closeEditStudentModal();
   });
 
-  // Notify absentees (sender-gated)
+  // Notify parents (sender-gated)
   document.getElementById('notifyBtn').addEventListener('click', onNotifyClick);
   document.getElementById('notifyAllBtn').addEventListener('click', onNotifyClick);
   document.getElementById('notifyDateInput').addEventListener('change', refreshNotifyData);
@@ -1388,14 +1552,25 @@ Kindly ensure regular attendance.
   document.getElementById('notifyModal').addEventListener('click', e => {
     if (e.target.id === 'notifyModal') closeNotifyModal();
   });
-  document.getElementById('notifyTemplate').addEventListener('input', e => {
-    setTemplate(e.target.value);
-    renderNotifyList();
+  ['absent', 'present'].forEach(kind => {
+    templateInput(kind).addEventListener('input', e => {
+      setTemplate(kind, e.target.value);
+      renderNotifyList();
+    });
   });
-  document.getElementById('notifyTemplateResetBtn').addEventListener('click', () => {
-    setTemplate('');
-    document.getElementById('notifyTemplate').value = DEFAULT_TEMPLATE;
-    renderNotifyList();
+  document.querySelectorAll('.notify-template-reset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const kind = btn.dataset.kind;
+      setTemplate(kind, '');
+      templateInput(kind).value = DEFAULT_TEMPLATES[kind];
+      renderNotifyList();
+    });
+  });
+  document.querySelectorAll('.notify-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      notifyFilter = btn.dataset.filter;
+      renderNotifyList();
+    });
   });
 
   document.addEventListener('keydown', e => {
@@ -1414,6 +1589,12 @@ Kindly ensure regular attendance.
     if (!ok) return;
     document.getElementById('contextCard').style.display = 'block';
     document.getElementById('classInput').focus();
+  });
+
+  // Unlocking shows a delete button on every class card; "Done" locks again.
+  document.getElementById('manageClassesBtn').addEventListener('click', () => {
+    if (adminUnlocked) { lockAdmin(); return; }
+    requireAdmin('Enter the admin passcode to manage classes.');
   });
 
   document.getElementById('adminGateSubmitBtn').addEventListener('click', onAdminGateSubmit);

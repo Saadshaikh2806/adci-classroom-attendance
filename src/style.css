@@ -225,18 +225,47 @@ body {
   color: #fff;
   font-family: inherit;
   box-shadow: var(--shadow-sm);
-  transition: transform .13s, box-shadow .13s;
+  transition: box-shadow .13s;
 }
+
+/* The wrapper holds the card plus the admin's delete button, so the lift
+   moves both together. */
+.class-card-wrap {
+  position: relative;
+  display: flex;
+  transition: transform .13s;
+}
+.class-card-wrap > .class-card { flex: 1; min-width: 0; }
 
 /* Hover lift only where there is a real pointer — on touch it sticks after a tap. */
 @media (hover: hover) {
-  .class-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
-  }
+  .class-card-wrap:hover { transform: translateY(-2px); }
+  .class-card-wrap:hover .class-card { box-shadow: var(--shadow-md); }
 }
 
-.class-card:active { transform: translateY(0); }
+.class-card-wrap:active { transform: translateY(0); }
+
+/* Admin mode: the delete button takes the lock's corner. */
+.class-card-wrap.managing .class-card-lock { visibility: hidden; }
+
+.class-card-delete {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,.5);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,.18);
+  color: #fff;
+  cursor: pointer;
+  transition: background .13s, color .13s;
+}
+.class-card-delete:hover,
+.class-card-delete:focus-visible { background: #fff; color: var(--absent); outline: none; }
 
 .class-card-name {
   font-size: 15px;
@@ -1006,7 +1035,51 @@ button.lec-summary-chip.type-test:hover {
   resize: vertical;
 }
 .notify-template textarea:focus { outline: none; border-color: var(--border-focus); }
-.notify-template-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.notify-template-block + .notify-template-block { margin-top: 12px; }
+.notify-template-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.notify-template-head label { font-size: 12.5px; font-weight: 600; color: var(--text); }
+
+/* All / Absent / Present segmented filter */
+.notify-filter {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.notify-filter-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .13s, color .13s;
+}
+.notify-filter-btn:hover { color: var(--text); }
+.notify-filter-btn[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.notify-filter-count { font-size: 11px; font-weight: 700; color: var(--text-subtle); }
+
+.notify-previews { display: flex; flex-direction: column; gap: 8px; }
 
 .notify-preview {
   border: 1px solid var(--border);
@@ -1059,6 +1132,7 @@ button.lec-summary-chip.type-test:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.notify-row-sessions.is-present { color: var(--present); }
 .notify-row.no-phone { background: var(--surface-2); }
 .notify-row.no-phone .avatar { filter: grayscale(1); opacity: .7; }
 .notify-row.sent {
@@ -1164,7 +1238,14 @@ button.lec-summary-chip.type-test:hover {
   border: 1px solid var(--absent-border);
   border-radius: 20px;
   padding: 1px 8px;
+  white-space: nowrap;
 }
+.notify-group-count.is-present {
+  color: var(--present);
+  background: var(--present-bg);
+  border-color: var(--present-border);
+}
+.notify-group-counts { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* ── Responsive ───────────────────────────────────────────── */
 /* Kept last so these overrides win over the component rules above. */
